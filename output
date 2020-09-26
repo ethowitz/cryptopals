@@ -1,0 +1,21 @@
+
+running 4 tests
+test set1::challenge2::verify ... ok
+test set1::challenge1::verify ... ok
+test set1::challenge3::verify ... ok
+test set1::challenge4::verify ... FAILED
+
+failures:
+
+---- set1::challenge4::verify stdout ----
+thread 'set1::challenge4::verify' panicked at 'assertion failed: `(left == right)`
+  left: `"{ZB\u{15}A]TA\u{15}A]P\u{15}ETGAL\u{15}\\F\u{15}_@XE\\[R?"`,
+ right: `""`', src/set1/challenge4.rs:62:5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    set1::challenge4::verify
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+
