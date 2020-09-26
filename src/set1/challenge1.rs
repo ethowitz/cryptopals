@@ -36,7 +36,7 @@ impl TryFrom<&str> for Hex {
 
 impl fmt::Display for Hex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in &self.0 { write!(f, "{:x}", byte)? }
+        for byte in &self.0 { write!(f, "{:02x}", byte)? }
 
         Ok(())
     }
@@ -49,6 +49,53 @@ impl Base64 {
     const INNER_GROUP_SIZE_BITS: u8 = 6;
     const OUTER_GROUP_SIZE_BITS: u8 = 24;
     const SIZE_U8_BITS: u8 = 8;
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let get_original_value = |byte: &u8| {
+            let uppercase_letter_range = {
+                let ascii_code = 'A' as u8;
+                ascii_code..(ascii_code + 26)
+            };
+            let lowercase_letter_range = {
+                let ascii_code = 'a' as u8;
+                ascii_code..(ascii_code + 26)
+            };
+            let number_range = {
+                let zero_ascii_code = '0' as u8;
+                zero_ascii_code..(zero_ascii_code + 10)
+            };
+            
+            if uppercase_letter_range.contains(byte) {
+                byte - ('A' as u8)
+            } else if lowercase_letter_range.contains(byte) {
+                byte - ('a' as u8) + 26
+            } else if number_range.contains(byte) {
+                byte - ('0' as u8) - 52
+            } else if *byte == ('+' as u8) {
+                62
+            } else if *byte == ('/' as u8) {
+                63
+            } else {
+                panic!("we should never get to this scenario given the bit operations above")
+            }
+        };
+
+        let mut v = Vec::new();
+
+        for chunk in self.0.chunks(4) {
+            let original_values: Vec<u8> = chunk.iter().map(get_original_value).collect();
+            let combined: u32 = (original_values[0] as u32) << 18 |
+                (original_values[1] as u32) << 12 |
+                (original_values[2] as u32) << 6 |
+                original_values[3] as u32;
+
+            v.push(((combined & 0xFF0000) >> 16) as u8);
+            v.push(((combined & 0xFF00) >> 8) as u8);
+            v.push((combined & 0xFF) as u8);
+        }
+
+        v
+    }
 }
 
 impl From<&[u8]> for Base64 {
@@ -89,6 +136,43 @@ impl From<&[u8]> for Base64 {
     }
 }
 
+impl TryFrom<&str> for Base64 {
+    type Error = &'static str;
+
+    fn try_from(string: &str) -> Result<Self, Self::Error> {
+        let mut v = Vec::new();
+
+        fn is_valid_base64_character(c: char) -> bool {
+            let uppercase_letter_range = {
+                let ascii_code = 'A' as u8;
+                ascii_code..(ascii_code + 26)
+            };
+            let lowercase_letter_range = {
+                let ascii_code = 'a' as u8;
+                ascii_code..(ascii_code + 26)
+            };
+            let number_range = {
+                let zero_ascii_code = '0' as u8;
+                zero_ascii_code..(zero_ascii_code + 10)
+            };
+            let special_characters = ['+', '/', '='];
+            let n = c as u8;
+
+            uppercase_letter_range.contains(&n) || lowercase_letter_range.contains(&n) ||
+                number_range.contains(&n) || special_characters.contains(&c)
+        }
+
+
+        for c in string.chars() {
+            if is_valid_base64_character(c) {
+                v.push(c as u8)
+            }
+        }
+
+        Ok(Base64(v))
+    }
+}
+
 impl fmt::Display for Base64 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for byte in &self.0 { write!(f, "{}", *byte as char)? }
@@ -109,5 +193,8 @@ fn verify() {
     let base64 = Base64::from(bytes.as_slice());
     
     assert_eq!(base64.to_string(), "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t");
+
+    let expected_base64 = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
+    assert_eq!(Base64::try_from(expected_base64).unwrap().to_string(), expected_base64);
 }
 

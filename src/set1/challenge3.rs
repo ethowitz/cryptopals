@@ -80,12 +80,15 @@ pub fn get_score(buffer: &[u8]) -> f64 {
     distances_iter.sum::<f64>() / length as f64
 }
 
-pub fn find_plaintext(ciphertext: &[u8]) -> Vec<u8> {
+pub fn find_key(ciphertext: &[u8]) -> Vec<u8> {
     let length = ciphertext.len();
 
     (0..u8::MAX)
-        .map(|n| challenge2::xor(ciphertext, vec![n; length].as_slice()).unwrap())
-        .min_by(|plaintext1, plaintext2| {
+        .map(|n| vec![n; length])
+        .min_by(|key1, key2| {
+            let plaintext1 = challenge2::xor(ciphertext, key1).unwrap();
+            let plaintext2 = challenge2::xor(ciphertext, key2).unwrap();
+
             if get_score(plaintext1.as_slice()) > get_score(plaintext2.as_slice()) {
                 Ordering::Greater
             } else {
@@ -93,6 +96,13 @@ pub fn find_plaintext(ciphertext: &[u8]) -> Vec<u8> {
             }
         })
         .unwrap()
+}
+
+pub fn find_plaintext(ciphertext: &[u8]) -> Vec<u8> {
+    let length = ciphertext.len();
+    let key = find_key(ciphertext);
+
+    challenge2::xor(&key, ciphertext).unwrap()
 }
 
 #[test]
