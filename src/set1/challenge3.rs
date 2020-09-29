@@ -55,29 +55,17 @@ lazy_static! {
     };
 }
 
-fn isolate_letters(buffer: &[u8]) -> Vec<u8> {
-    let mut only_letters = Vec::new();
-
-    for byte in buffer.iter() {
-        if FREQUENCY_TABLE.contains_key(&(*byte as char)) {
-            only_letters.push(*byte);
-        }
-    }
-
-    only_letters
-}
-
 pub fn get_score(buffer: &[u8]) -> f64 {
-    let only_letters = isolate_letters(buffer);
-    let char_distribution = get_char_distribution(only_letters.as_slice());
-    let get_distance = |(k, v): (&char, &f64)| -> Option<f64> {
-        char_distribution.get(k).map(|freq| (freq - v).abs())
-    };
+    let char_distribution = get_char_distribution(buffer);
 
-    let distances_iter = FREQUENCY_TABLE.iter().filter_map(get_distance);
-    let length = FREQUENCY_TABLE.keys().filter(|k| char_distribution.contains_key(k)).count();
+    let distances_iter = FREQUENCY_TABLE.iter().map(|(letter, expected_frequency)| {
+        char_distribution
+            .get(letter)
+            .map(|freq| (freq - expected_frequency).abs())
+            .unwrap_or(*expected_frequency)
+    });
 
-    distances_iter.sum::<f64>() / length as f64
+    distances_iter.sum::<f64>() / FREQUENCY_TABLE.len() as f64
 }
 
 pub fn find_key(ciphertext: &[u8]) -> Vec<u8> {
@@ -87,19 +75,16 @@ pub fn find_key(ciphertext: &[u8]) -> Vec<u8> {
         .map(|n| vec![n; length])
         .min_by(|key1, key2| {
             let plaintext1 = challenge2::xor(ciphertext, key1).unwrap();
+            let score1 = get_score(&plaintext1);
             let plaintext2 = challenge2::xor(ciphertext, key2).unwrap();
+            let score2 = get_score(&plaintext2);
 
-            if get_score(plaintext1.as_slice()) > get_score(plaintext2.as_slice()) {
-                Ordering::Greater
-            } else {
-                Ordering::Less
-            }
+            score1.partial_cmp(&score2).unwrap_or(Ordering::Equal)
         })
         .unwrap()
 }
 
 pub fn find_plaintext(ciphertext: &[u8]) -> Vec<u8> {
-    let length = ciphertext.len();
     let key = find_key(ciphertext);
 
     challenge2::xor(&key, ciphertext).unwrap()

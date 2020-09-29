@@ -46,10 +46,6 @@ impl fmt::Display for Hex {
 pub struct Base64(Vec<u8>);
 
 impl Base64 {
-    const INNER_GROUP_SIZE_BITS: u8 = 6;
-    const OUTER_GROUP_SIZE_BITS: u8 = 24;
-    const SIZE_U8_BITS: u8 = 8;
-
     pub fn to_bytes(&self) -> Vec<u8> {
         let get_original_value = |byte: &u8| {
             let uppercase_letter_range = {
@@ -70,12 +66,13 @@ impl Base64 {
             } else if lowercase_letter_range.contains(byte) {
                 byte - ('a' as u8) + 26
             } else if number_range.contains(byte) {
-                byte - ('0' as u8) - 52
+                byte - ('0' as u8) + 52
             } else if *byte == ('+' as u8) {
                 62
             } else if *byte == ('/' as u8) {
                 63
             } else {
+                println!("{}",byte);
                 panic!("we should never get to this scenario given the bit operations above")
             }
         };
@@ -83,15 +80,32 @@ impl Base64 {
         let mut v = Vec::new();
 
         for chunk in self.0.chunks(4) {
-            let original_values: Vec<u8> = chunk.iter().map(get_original_value).collect();
-            let combined: u32 = (original_values[0] as u32) << 18 |
-                (original_values[1] as u32) << 12 |
-                (original_values[2] as u32) << 6 |
-                original_values[3] as u32;
+            let number_of_pads = chunk.iter().filter(|byte| **byte as char == '=').count();
 
-            v.push(((combined & 0xFF0000) >> 16) as u8);
-            v.push(((combined & 0xFF00) >> 8) as u8);
-            v.push((combined & 0xFF) as u8);
+            if number_of_pads == 0 {
+                let original_values: Vec<u8> = chunk.iter().map(get_original_value).collect();
+
+                let combined: u32 = (original_values[0] as u32) << 18 |
+                    (original_values[1] as u32) << 12 |
+                    (original_values[2] as u32) << 6 |
+                    original_values[3] as u32;
+
+                v.push(((combined & 0xFF0000) >> 16) as u8);
+                v.push(((combined & 0xFF00) >> 8) as u8);
+                v.push((combined & 0xFF) as u8);
+            } else if number_of_pads == 1 {
+                let original_value1 = get_original_value(&chunk[0]);
+                let original_value2 = get_original_value(&chunk[1]);
+                let original_value3 = get_original_value(&chunk[2]);
+
+                v.push(original_value1 << 2 | original_value2 >> 4);
+                v.push(original_value2 << 4 | original_value3 >> 2);
+
+            } else if number_of_pads == 2 {
+                let original_value1 = get_original_value(&chunk[0]);
+                let original_value2 = get_original_value(&chunk[1]);
+                v.push(original_value1 << 2 | original_value2 >> 4);
+            }
         }
 
         v
@@ -100,37 +114,76 @@ impl Base64 {
 
 impl From<&[u8]> for Base64 {
     fn from(bytes: &[u8]) -> Self {
+        let get_ascii_value = |index: u32| {
+            if (0..26).contains(&index) {
+                (index + ('A' as u32)) as u8
+            } else if (26..52).contains(&index) {
+                (index + ('a' as u32) - 26) as u8
+            } else if (52..62).contains(&index) {
+                (index + ('0' as u32) - 52) as u8
+            } else if index == 62 {
+                '+' as u8
+            } else if index == 63 {
+                '/' as u8
+            } else {
+                panic!("we should never get to this scenario given the bit operations above")
+            }
+        };
+
         let get_inner_groups = |slice: &[u8]| {
             let outer_group: u32 = (slice[0] as u32) << 16
                 | (slice[1] as u32) << 8
                 | slice[2] as u32;
-            let mask = 0b00111111u32;
-            let get_ascii_value = |inner_group_number: u8| {
-                let offset = Self::INNER_GROUP_SIZE_BITS * inner_group_number;
-                let index = (outer_group & (mask << offset)) >> offset;
+            let mask = 0b00111111;
+            let index1 = (outer_group & (mask << 18)) >> 18;
+            let index2 = (outer_group & (mask << 12)) >> 12;
+            let index3 = (outer_group & (mask << 6)) >> 6;
+            let index4 = outer_group & mask;
 
-                if (0..26).contains(&index) {
-                    (index + ('A' as u32)) as u8
-                } else if (26..52).contains(&index) {
-                    (index + ('a' as u32) - 26) as u8
-                } else if (52..62).contains(&index) {
-                    (index + ('0' as u32) - 52) as u8
-                } else if index == 62 {
-                    '+' as u8
-                } else if index == 63 {
-                    '/' as u8
-                } else {
-                    panic!("we should never get to this scenario given the bit operations above")
-                }
-            };
-
-            vec![get_ascii_value(3), get_ascii_value(2), get_ascii_value(1), get_ascii_value(0)]
+            vec![get_ascii_value(index1), get_ascii_value(index2), get_ascii_value(index3),
+                get_ascii_value(index4)]
         };
 
-        let output_bytes = bytes
-            .chunks((Self::OUTER_GROUP_SIZE_BITS / Self::SIZE_U8_BITS) as usize)
+        let length = bytes.len();
+        let mut last_quantum = {
+            let remaining_bytes: Vec<u8> = bytes.iter().rev().take(length % 3).rev().map(|n| *n)
+                .collect();
+        
+            let mut v = Vec::new();
+
+            if remaining_bytes.len() == 1 {
+                let inner_group_1 = (remaining_bytes[0] & 0b11111100) >> 2;
+                let inner_group_2 = (remaining_bytes[0] & 0b00000011) << 4;
+
+                v.push(get_ascii_value(inner_group_1 as u32));
+                v.push(get_ascii_value(inner_group_2 as u32));
+                v.push('=' as u8);
+                v.push('=' as u8);
+            } else if remaining_bytes.len() == 2 {
+                let outer_group = (remaining_bytes[0] as u32) << 8 |
+                    (remaining_bytes[1] as u32);
+                let mask = 0b00111111;
+                let inner_group_1 = (outer_group & (mask << 10)) >> 10;
+                let inner_group_2 = (outer_group & (mask << 4)) >> 4;
+                let inner_group_3 = (outer_group & mask) << 2;
+
+
+                v.push(get_ascii_value(inner_group_1));
+                v.push(get_ascii_value(inner_group_2));
+                v.push(get_ascii_value(inner_group_3));
+                v.push('=' as u8);
+            }
+
+            v
+        };
+
+        let mut output_bytes: Vec<u8> = bytes
+            .chunks(3 as usize)
+            .take(length - (length % 3))
             .flat_map(|slice| get_inner_groups(slice))
             .collect();
+
+        output_bytes.append(&mut last_quantum);
 
         Self(output_bytes)
     }
@@ -162,10 +215,11 @@ impl TryFrom<&str> for Base64 {
                 number_range.contains(&n) || special_characters.contains(&c)
         }
 
-
         for c in string.chars() {
             if is_valid_base64_character(c) {
                 v.push(c as u8)
+            } else {
+                return Err("invalid base64!");
             }
         }
 
@@ -196,5 +250,17 @@ fn verify() {
 
     let expected_base64 = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
     assert_eq!(Base64::try_from(expected_base64).unwrap().to_string(), expected_base64);
+
+    let bytes = base64.to_bytes();
+    let new_hex = Hex::from_bytes(&bytes);
+    assert_eq!(new_hex.to_string(), raw_hex);
+
+    let hex3 = Hex::try_from("66").unwrap().to_bytes();
+    let base642 = Base64::from(hex3.as_slice()).to_string();
+    assert_eq!(base642, "Zg==");
+
+    assert_eq!(Base64::try_from("Zg==").unwrap().to_bytes(), vec!['f' as u8]);
+    assert_eq!(Base64::try_from("bXkgbmFtZSBpcyBldGhhbg==").unwrap().to_bytes(),
+        "my name is ethan".as_bytes());
 }
 

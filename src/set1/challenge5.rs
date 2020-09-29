@@ -1,7 +1,7 @@
 use super::challenge1::Hex;
 
-pub fn repeating_key_xor(key: &[u8], plaintext: &[u8]) -> Vec<u8> {
-    key.iter().cycle().zip(plaintext.iter()).map(|(byte1, byte2)| byte1 ^ byte2).collect()
+pub fn repeating_key_xor(key: &[u8], buffer: &[u8]) -> Vec<u8> {
+    key.iter().cycle().zip(buffer.iter()).map(|(byte1, byte2)| byte1 ^ byte2).collect()
 }
 
 #[test]
