@@ -6,7 +6,7 @@ use super::challenge2;
 use super::challenge3;
 use super::challenge5;
 
-fn get_hamming_distance(buffer1: &[u8], buffer2: &[u8]) -> Result<usize, &'static str> {
+pub fn get_hamming_distance(buffer1: &[u8], buffer2: &[u8]) -> Result<usize, &'static str> {
     let count_bits = |byte| (0..8).fold(0, |acc, n| acc + (((1 << n) & byte) >> n) as usize);
 
     challenge2::xor(buffer1, buffer2).map(|buffer| {
