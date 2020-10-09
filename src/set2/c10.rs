@@ -1,76 +1,121 @@
-use std::fs;
-use std::cmp::Ordering;
-use std::convert::TryFrom;
-use super::challenge1::Base64;
-use super::challenge2;
-use super::challenge3;
-use super::challenge5;
+use crate::set1::{c1::Base64, c2, c7};
+use openssl::symm::{Cipher, Crypter, Mode};
+use rand::{distributions::Uniform, Rng};
+use std::{convert::TryFrom, fs};
+use super::c9;
 
-pub fn get_hamming_distance(buffer1: &[u8], buffer2: &[u8]) -> Result<usize, &'static str> {
-    let count_bits = |byte| (0..8).fold(0, |acc, n| acc + (((1 << n) & byte) >> n) as usize);
+const AES_128_BLOCK_SIZE: usize = 16;
 
-    challenge2::xor(buffer1, buffer2).map(|buffer| {
-        buffer.iter().fold(0, |acc, byte| acc + count_bits(*byte))
-    })
+struct AesEncrypter {
+    encrypter: Crypter,
 }
 
-fn find_key(buffer: &[u8]) -> Vec<u8> {
-    const MAX_KEYSIZE: usize = 40;
+impl AesEncrypter {
+    fn new(key: &[u8]) -> Self {
+        let cipher = Cipher::aes_128_ecb();
 
-    let keysize = (1..MAX_KEYSIZE).min_by(|keysize1, keysize2| {
-        let get_average_hamming_distance = |keysize: usize| {
-            let number_of_blocks = buffer.len() / keysize;
-            let hamming_distances = (0..(number_of_blocks-1)).map(|n| {
-                get_hamming_distance(&buffer[n*keysize..(n+1)*keysize],
-                    &buffer[(n+1)*keysize..(n+2)*keysize]).unwrap()
-            });
-            
-            hamming_distances.sum::<usize>() as f64 / number_of_blocks as f64 / keysize as f64
-        };
-        let average_hamming_distance1 = get_average_hamming_distance(*keysize1);
-        let average_hamming_distance2 = get_average_hamming_distance(*keysize2);
+        let mut encrypter = Crypter::new(cipher, Mode::Encrypt, key, None).unwrap();
+        encrypter.pad(false);
 
-        average_hamming_distance1.partial_cmp(&average_hamming_distance2)
-            .unwrap_or(Ordering::Equal)
-    }).unwrap();
+        AesEncrypter { encrypter }
+    }
 
-    let blocks = buffer.chunks(keysize);
-    let transposed_blocks = (0..blocks.len()).map(|n: usize| -> Vec<u8> {
-        blocks.clone().filter_map(|block| block.get(n)).copied().collect()
-    });
+    pub fn encrypt_block(&mut self, block: &[u8]) -> Option<Vec<u8>> {
+        if block.len() == AES_128_BLOCK_SIZE {
+            let mut ciphertext = vec![0u8; AES_128_BLOCK_SIZE * 2];
+            self.encrypter.update(block, &mut ciphertext).unwrap();
+            self.encrypter.finalize(&mut ciphertext).unwrap();
+            ciphertext.truncate(AES_128_BLOCK_SIZE);
 
-    transposed_blocks
-        .take(keysize)
-        .map(|block| challenge3::find_key(&block)[0])
-        .collect()
+            Some(ciphertext)
+        } else {
+            None
+        }
+    }
 }
 
-// INTUITION
-// 1. finding the keysize and transposing the blocks gives you blocks of bytes that were all
-//    XOR'd with the same byte
-// 2. once we have the single-character key for each transposed block, we can un-transpose one
-//    "cycle" of keys to get the original key
-// *  This approach makes cryptanalysis easier because we create blocks of bytes whose letter 
-//    frequencies don't change with the application of the key
-fn find_plaintext(buffer: &[u8]) -> Vec<u8> {
-    let key = find_key(buffer);
-    challenge5::repeating_key_xor(&key, buffer)
+struct AesDecrypter {
+    decrypter: Crypter,
 }
 
-#[test]
-fn test_get_hamming_distance() {
-    let buffer1 = "this is a test".as_bytes();
-    let buffer2 = "wokka wokka!!!".as_bytes();
-    let expected_hamming_distance = 37;
-    assert_eq!(expected_hamming_distance, get_hamming_distance(buffer1, buffer2).unwrap());
+impl AesDecrypter {
+    fn new(key: &[u8]) -> Self {
+        let cipher = Cipher::aes_128_ecb();
+
+        let mut decrypter = Crypter::new(cipher, Mode::Decrypt, key, None).unwrap();
+        decrypter.pad(false);
+
+        AesDecrypter { decrypter }
+    }
+
+    pub fn decrypt_block(&mut self, block: &[u8]) -> Option<Vec<u8>> {
+        if block.len() == AES_128_BLOCK_SIZE {
+            let mut plaintext = vec![0u8; AES_128_BLOCK_SIZE * 2];
+            self.decrypter.update(block, &mut plaintext).unwrap();
+            self.decrypter.finalize(&mut plaintext).unwrap();
+            plaintext.truncate(AES_128_BLOCK_SIZE);
+
+            Some(plaintext)
+        } else {
+            None
+        }
+    }
+}
+
+fn aes_cbc_encrypt(plaintext: &[u8], key: &[u8]) -> Vec<u8> {
+    let mut encrypter = AesEncrypter::new(key);
+    let iv: Vec<u8> = {
+        let mut rng = rand::thread_rng();
+        let range = Uniform::new(0, u8::MAX);
+
+        (0..AES_128_BLOCK_SIZE).map(|_| rng.sample(&range)).collect()
+    };
+
+    let padded_plaintext = c9::pkcs7_pad(plaintext, AES_128_BLOCK_SIZE as u8);
+    let ciphertext_blocks = padded_plaintext.chunks(AES_128_BLOCK_SIZE)
+        .fold(vec![iv], |mut acc, plaintext_block| {
+            let xored_plaintext = c2::xor(acc.last().unwrap(), plaintext_block).unwrap();
+            let ciphertext = encrypter.encrypt_block(&xored_plaintext).unwrap();
+
+            acc.push(ciphertext);
+            acc
+        });
+
+    ciphertext_blocks.iter().flatten().copied().collect()
+}
+
+fn aes_cbc_decrypt(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
+    if ciphertext.len() % AES_128_BLOCK_SIZE == 0 && iv.len() == AES_128_BLOCK_SIZE {
+        let mut decrypter = AesDecrypter::new(key);
+        let ciphertext_blocks: Vec<&[u8]> = vec![iv]
+            .iter().map(|x| *x)
+            .chain(ciphertext.chunks(AES_128_BLOCK_SIZE))
+            .collect();
+
+        let plaintext = ciphertext_blocks.windows(2).fold(Vec::new(), |mut acc, ctxt_blocks| {
+            let xored_plaintext_block = decrypter.decrypt_block(ctxt_blocks[1]).unwrap();
+            let mut plaintext_block = c2::xor(&xored_plaintext_block, ctxt_blocks[0])
+                .unwrap();
+
+            acc.append(&mut plaintext_block);
+            acc
+        });
+
+        Some(c9::pkcs7_unpad(&plaintext, AES_128_BLOCK_SIZE as u8).unwrap())
+    } else {
+        None
+    }
 }
 
 #[test]
 fn verify() {
-    let raw = fs::read_to_string("./src/set1/6.txt").unwrap();
+    let raw = fs::read_to_string("./src/set2/10.txt").unwrap();
     let base64 = Base64::try_from(raw.replace("\n", "").as_str()).unwrap();
-
-    let expected_plaintext = "I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \
+    let ciphertext = base64.to_bytes();
+    println!("{:?}", ciphertext);
+    let iv = vec![0u8; AES_128_BLOCK_SIZE];
+    let plaintext = aes_cbc_decrypt(&ciphertext, b"YELLOW SUBMARINE", &iv).unwrap();
+    let expected_plaintext = b"I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \
                               the fly girls yell \nIn ecstasy in the back of me \nWell that\'s my \
                               DJ Deshay cuttin\' all them Z\'s \nHittin\' hard and the girlies \
                               goin\' crazy \nVanilla\'s on the mike, man I\'m not lazy. \n\nI\'m \
@@ -117,6 +162,5 @@ fn verify() {
                               that funky music A little louder now \nPlay that funky music, white \
                               boy Come on, Come on, Come on \nPlay that funky music \n";
 
-    let plaintext = String::from_utf8(find_plaintext(&base64.to_bytes())).unwrap();
-    assert_eq!(expected_plaintext, plaintext);
+    assert_eq!(expected_plaintext, plaintext.as_slice());
 }

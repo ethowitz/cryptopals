@@ -3,9 +3,9 @@ use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
-use super::challenge3;
-use super::challenge1::Hex;
-use super::challenge2;
+use super::c3;
+use super::c1::Hex;
+use super::c2;
 
 fn find_plaintext<P: AsRef<Path>>(filename: P) -> Vec<u8> {
     fn read_lines<P: AsRef<Path>>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>> {
@@ -18,12 +18,12 @@ fn find_plaintext<P: AsRef<Path>>(filename: P) -> Vec<u8> {
 
     let plaintexts_iter = ciphertexts.iter().flat_map(|ciphertext: &Vec<u8>| -> Vec<Vec<u8>> {
         (0..u8::MAX).map(|n| {
-            challenge2::xor(&ciphertext, &vec![n; ciphertext.len()]).unwrap()
+            c2::xor(&ciphertext, &vec![n; ciphertext.len()]).unwrap()
         }).collect()
     });
 
     plaintexts_iter.min_by(|plaintext1, plaintext2| {
-        if challenge3::get_score(&plaintext1) > challenge3::get_score(&plaintext2) {
+        if c3::get_score(&plaintext1) > c3::get_score(&plaintext2) {
             Ordering::Greater
         } else {
             Ordering::Less

@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{self, BufRead};
-use super::challenge1::Hex;
-use super::challenge6;
+use super::c1::Hex;
+use super::c6;
 
 fn detect_aes_ecb(buffers: &[&[u8]]) -> Option<Vec<u8>> {
     const AES_BLOCK_SIZE: usize = 16;
@@ -12,7 +12,7 @@ fn detect_aes_ecb(buffers: &[&[u8]]) -> Option<Vec<u8>> {
         let number_of_blocks = buffer.len() / AES_BLOCK_SIZE;
         let hamming_distances = (0..(number_of_blocks-1)).flat_map(|i: usize| -> Vec<usize> {
             (i..(number_of_blocks-1)).map(|j| {
-                challenge6::get_hamming_distance(&buffer[i*AES_BLOCK_SIZE..(i+1)*AES_BLOCK_SIZE],
+                c6::get_hamming_distance(&buffer[i*AES_BLOCK_SIZE..(i+1)*AES_BLOCK_SIZE],
                     &buffer[j*AES_BLOCK_SIZE..(j+1)*AES_BLOCK_SIZE]).unwrap()
             }).collect()
         });

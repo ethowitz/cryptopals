@@ -1,5 +1,5 @@
 use std::convert::TryFrom;
-use super::challenge1::Hex;
+use super::c1::Hex;
 
 pub fn xor(buffer1: &[u8], buffer2: &[u8]) -> Result<Vec<u8>, &'static str> {
     if buffer1.len() == buffer2.len() {

@@ -1,9 +1,15 @@
-use openssl::symm::{decrypt, Cipher};
+use openssl::symm::{decrypt, encrypt, Cipher};
 use std::convert::TryFrom;
 use std::fs;
-use super::challenge1::Base64;
+use super::c1::Base64;
 
-fn aes_decrypt(key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
+pub fn aes_ecb_encrypt(plaintext: &[u8], key: &[u8]) -> Vec<u8> {
+    let cipher = Cipher::aes_128_ecb();
+
+    encrypt(cipher, key, None, plaintext).unwrap().clone()
+}
+
+pub fn aes_ecb_decrypt(ciphertext: &[u8], key: &[u8]) -> Vec<u8> {
     let cipher = Cipher::aes_128_ecb();
 
     decrypt(cipher, key, None, ciphertext).unwrap().clone()
@@ -14,9 +20,9 @@ fn verify() {
     let raw = fs::read_to_string("./src/set1/7.txt").unwrap();
     let base64 = Base64::try_from(raw.replace("\n", "").as_str()).unwrap();
     let ciphertext = base64.to_bytes();
-    let plaintext = aes_decrypt(b"YELLOW SUBMARINE", &ciphertext);
+    let plaintext = aes_ecb_decrypt(&ciphertext, b"YELLOW SUBMARINE");
 
-    let expected_plaintext = "I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \
+    let expected_plaintext = b"I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \
                               the fly girls yell \nIn ecstasy in the back of me \nWell that\'s my \
                               DJ Deshay cuttin\' all them Z\'s \nHittin\' hard and the girlies \
                               goin\' crazy \nVanilla\'s on the mike, man I\'m not lazy. \n\nI\'m \
@@ -63,5 +69,10 @@ fn verify() {
                               that funky music A little louder now \nPlay that funky music, white \
                               boy Come on, Come on, Come on \nPlay that funky music \n";
 
-    assert_eq!(String::from_utf8(plaintext).unwrap(), expected_plaintext);
+    assert_eq!(plaintext, expected_plaintext);
+
+    let raw2 = b"ethan";
+    let ciphertext2 = aes_ecb_encrypt(raw2, b"YELLOW SUBMARINE");
+    let plaintext2 = aes_ecb_decrypt(&ciphertext2, b"YELLOW SUBMARINE");
+    assert_eq!(plaintext2, b"ethan");
 }

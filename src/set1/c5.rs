@@ -1,4 +1,4 @@
-use super::challenge1::Hex;
+use super::c1::Hex;
 
 pub fn repeating_key_xor(key: &[u8], buffer: &[u8]) -> Vec<u8> {
     key.iter().cycle().zip(buffer.iter()).map(|(byte1, byte2)| byte1 ^ byte2).collect()
