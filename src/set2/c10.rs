@@ -62,18 +62,11 @@ impl AesDecrypter {
     }
 }
 
-fn aes_cbc_encrypt(plaintext: &[u8], key: &[u8]) -> Vec<u8> {
+pub fn aes_cbc_encrypt(plaintext: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
     let mut encrypter = AesEncrypter::new(key);
-    let iv: Vec<u8> = {
-        let mut rng = rand::thread_rng();
-        let range = Uniform::new(0, u8::MAX);
-
-        (0..AES_128_BLOCK_SIZE).map(|_| rng.sample(&range)).collect()
-    };
-
     let padded_plaintext = c9::pkcs7_pad(plaintext, AES_128_BLOCK_SIZE as u8);
     let ciphertext_blocks = padded_plaintext.chunks(AES_128_BLOCK_SIZE)
-        .fold(vec![iv], |mut acc, plaintext_block| {
+        .fold(vec![iv.to_vec()], |mut acc, plaintext_block| {
             let xored_plaintext = c2::xor(acc.last().unwrap(), plaintext_block).unwrap();
             let ciphertext = encrypter.encrypt_block(&xored_plaintext).unwrap();
 
@@ -81,7 +74,7 @@ fn aes_cbc_encrypt(plaintext: &[u8], key: &[u8]) -> Vec<u8> {
             acc
         });
 
-    ciphertext_blocks.iter().flatten().copied().collect()
+    ciphertext_blocks.iter().skip(1).flatten().copied().collect()
 }
 
 fn aes_cbc_decrypt(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
