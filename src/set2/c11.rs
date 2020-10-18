@@ -39,16 +39,18 @@ pub fn aes_encryption_oracle(buffer: &[u8]) -> Vec<u8> {
     }
 }
 
-enum AesMode {
+pub enum AesMode {
     Cbc,
     Ecb,
 }
 
-fn aes_detection_oracle() -> AesMode {
-    let chosen_plaintext = [0u8; 43];
-    let ciphertext = aes_encryption_oracle(&chosen_plaintext);
+pub fn aes_detection_oracle<F>(mut encrypter: F, block_size: usize) -> AesMode
+    where F: FnMut(&[u8]) -> Vec<u8>
+{
+    let chosen_plaintext = [0u8; u8::MAX as usize];
+    let ciphertext = encrypter(&chosen_plaintext);
     let ciphertext_blocks: Vec<&[u8]> = ciphertext
-        .chunks(AES_128_BLOCK_SIZE)
+        .chunks(block_size)
         .collect();
 
     if ciphertext_blocks[1] == ciphertext_blocks[2] {
@@ -60,11 +62,11 @@ fn aes_detection_oracle() -> AesMode {
 
 #[test]
 fn verify() {
-    let epsilon = 0.05;
-    let num_trials = 10000;
+    let epsilon = 0.01;
+    let num_trials = 50000;
 
     let sum = (0..num_trials).fold(0, |acc, _| {
-        acc + match aes_detection_oracle() {
+        acc + match aes_detection_oracle(|plaintext| aes_encryption_oracle(plaintext), AES_128_BLOCK_SIZE) {
             AesMode::Cbc => 0,
             AesMode::Ecb => 1
         }
