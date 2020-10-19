@@ -64,10 +64,18 @@ impl AesDecrypter {
 
 pub fn aes_cbc_encrypt(plaintext: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
     let mut encrypter = AesEncrypter::new(key);
+
+    // pkcs7 pad the plaintext
     let padded_plaintext = c9::pkcs7_pad(plaintext, AES_128_BLOCK_SIZE as u8);
+
+    // fold over the blocks of plaintext with the initialization vector as the first element of the
+    // sequence of ciphertext blocks
     let ciphertext_blocks = padded_plaintext.chunks(AES_128_BLOCK_SIZE)
         .fold(vec![iv.to_vec()], |mut acc, plaintext_block| {
+            // XOR the current plaintext block with the previous ciphertext block
             let xored_plaintext = c2::xor(acc.last().unwrap(), plaintext_block).unwrap();
+
+            // encrypt the XORed plaintext block
             let ciphertext = encrypter.encrypt_block(&xored_plaintext).unwrap();
 
             acc.push(ciphertext);
@@ -81,12 +89,19 @@ fn aes_cbc_decrypt(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> Option<Vec<u8>> 
     if ciphertext.len() % AES_128_BLOCK_SIZE == 0 && iv.len() == AES_128_BLOCK_SIZE {
         let mut decrypter = AesDecrypter::new(key);
         let ciphertext_blocks: Vec<&[u8]> = vec![iv]
-            .iter().map(|x| *x)
+            .iter()
+            .copied()
             .chain(ciphertext.chunks(AES_128_BLOCK_SIZE))
             .collect();
 
+        // fold over the ciphertext blocks. the first block in the sequence in the initialization
+        // vector
         let plaintext = ciphertext_blocks.windows(2).fold(Vec::new(), |mut acc, ctxt_blocks| {
+            // decrypt the ciphertext_block
             let xored_plaintext_block = decrypter.decrypt_block(ctxt_blocks[1]).unwrap();
+
+            // XOR the decrypted ciphertext block with the previous ciphertext block to recover the
+            // plaintext
             let mut plaintext_block = c2::xor(&xored_plaintext_block, ctxt_blocks[0])
                 .unwrap();
 

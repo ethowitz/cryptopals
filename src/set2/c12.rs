@@ -18,11 +18,19 @@ fn oracle(plaintext: &[u8]) -> Vec<u8> {
     c7::aes_ecb_encrypt(&full_plaintext, &KEY)
 }
 
-fn find_block_size() -> usize {
+pub fn find_block_size<F>(mut encrypter: F) -> usize
+    where F: FnMut(&[u8]) -> Vec<u8>
+{
     let plaintext = vec![0u8; u8::MAX as usize]; 
 
+    // compute ciphertexts using plaintexts \x0, \x0\x0, \x0\x0\x0, etc. the index of the first
+    // ciphertext in the list whose first block matches that of the subsequent ciphertext in the
+    // list is our block size. this exploits the property that the same block of plaintext
+    // encrypted with the same key always produces the same block of ciphertext: we know we've
+    // found a block boundary once our plaintext has grown to a size such that the first block of
+    // ciphertext is unchanged with an additional byte of plaintext.
     (1..u8::MAX)
-        .map(|n| oracle(&plaintext[..n as usize]))
+        .map(|n| encrypter(&plaintext[..n as usize]))
         .collect::<Vec<Vec<u8>>>()
         .windows(2)
         .enumerate()
@@ -30,27 +38,45 @@ fn find_block_size() -> usize {
         .count() + 1
 }
 
+// INTUITION
+//
+// given a function that prepends known plaintext to unknown plaintext prior to encryption, we can
+// exploit the property of the ECB mode that a given block of plaintext always produces the same
+// block of ciphertext. since we can an provide arbitrary known-plaintext prefix to the oracle,
+// we can ensure that we /always/ know the 15 bytes of plaintext prior to the byte we are trying to
+// solve. this allows us to brute force each byte of plaintext by pushing the byte we are solving
+// for to be the last byte of a block and comparing the resulting ciphertext block to the 2^8
+// possible ciphertext blocks.
 fn decrypt_ciphertext() -> Vec<u8> {
-    let block_size = find_block_size();
+    let block_size = find_block_size(|p| oracle(p));
     let mut plaintext = Vec::new();
 
     for n in 0..oracle(&[]).len() {
-        let almost_block = {
-            if n < block_size - 1 {
-                [vec![0u8; block_size - n - 1].as_slice(), plaintext.as_slice()].concat()
-            } else {
-                plaintext[n-(block_size-1)..].to_vec()
-            }
-        };
-
-        let pad = vec![0; block_size - (n % block_size) - 1];
 
         let solved_nth_byte = {
+            // pass pad bytes to the oracle such that the byte we are solving for is the final byte
+            // in a block; given that we know the previous block_size-1 bytes of plaintext, we are
+            // able to brute force this plaintext byte.
+            let pad = vec![0; block_size - (n % block_size) - 1];
+            let ciphertext = oracle(&pad);
+
+            // isolate the block of ciphertext we are interested in
             let block_number = n / block_size;
             let block_indexes = block_number*block_size..(block_number*block_size+block_size);
-            let ciphertext = oracle(&pad);
             let ciphertext_block = &ciphertext[block_indexes];
 
+            // choose the previous `block_size-1` plaintext bytes to use during our brute force
+            // attack. if we don't have `block_size-1` plaintext bytes, pad the rest with zeroes
+            let almost_block = {
+                if n < block_size - 1 {
+                    [vec![0u8; block_size - n - 1].as_slice(), plaintext.as_slice()].concat()
+                } else {
+                    plaintext[n-(block_size-1)..].to_vec()
+                }
+            };
+
+            // compare the isolated ciphertext block to all of the possible ones to brute force
+            // this byte
             let maybe_solved_byte = (0..u8::MAX).find(|byte| {
                 let mut block = almost_block.clone();
                 block.push(*byte);
@@ -78,7 +104,7 @@ fn decrypt_ciphertext() -> Vec<u8> {
 
 #[test]
 fn verify() {
-    let block_size = find_block_size();
+    let block_size = find_block_size(|p| oracle(p));
     assert_eq!(block_size, 16);
 
     if let AesMode::Cbc = c11::aes_detection_oracle(|p| oracle(p), block_size) {

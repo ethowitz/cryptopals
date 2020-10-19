@@ -47,12 +47,14 @@ pub enum AesMode {
 pub fn aes_detection_oracle<F>(mut encrypter: F, block_size: usize) -> AesMode
     where F: FnMut(&[u8]) -> Vec<u8>
 {
+    // choose any plaintext such that the first two blocks are equal
     let chosen_plaintext = [0u8; u8::MAX as usize];
     let ciphertext = encrypter(&chosen_plaintext);
     let ciphertext_blocks: Vec<&[u8]> = ciphertext
         .chunks(block_size)
         .collect();
 
+    // if the first two ciphertext blocks are the same, ECB is being used
     if ciphertext_blocks[1] == ciphertext_blocks[2] {
         AesMode::Ecb
     } else {

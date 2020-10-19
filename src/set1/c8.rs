@@ -8,6 +8,7 @@ use super::c6;
 fn detect_aes_ecb(buffers: &[&[u8]]) -> Option<Vec<u8>> {
     const AES_BLOCK_SIZE: usize = 16;
 
+    // compute the average hamming distance across every pair of blocks in the buffer
     let get_average_hamming_distance = |buffer: &[u8]| {
         let number_of_blocks = buffer.len() / AES_BLOCK_SIZE;
         let hamming_distances = (0..(number_of_blocks-1)).flat_map(|i: usize| -> Vec<usize> {
@@ -20,6 +21,8 @@ fn detect_aes_ecb(buffers: &[&[u8]]) -> Option<Vec<u8>> {
         hamming_distances.sum::<usize>() as f64 / number_of_blocks as f64
     };
 
+    // the buffer with the minimum average hamming distance is very likely ECB encrypted since
+    // equal plaintext blocks produce equal ciphertext blocks
     buffers.iter().min_by(|buffer1, buffer2| {
         let average_hamming_distance1 = get_average_hamming_distance(buffer1);
         let average_hamming_distance2 = get_average_hamming_distance(buffer2);
