@@ -26,6 +26,12 @@ pub fn pkcs7_unpad(buffer: &[u8], block_size: u8) -> Option<Vec<u8>> {
                 let pad_byte = last_block[last_block.len() - 1];
                 let number_of_pad_bytes = last_block.iter().rev()
                     .take_while(|byte| **byte == pad_byte).count();
+
+                if &last_block[(block_size as usize)-number_of_pad_bytes..] !=
+                      vec![number_of_pad_bytes as u8; number_of_pad_bytes] {
+                    return None;
+                }
+
                 last_block.truncate(block_size as usize - number_of_pad_bytes);
                 last_block
             };
