@@ -85,7 +85,7 @@ pub fn aes_cbc_encrypt(plaintext: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
     ciphertext_blocks.iter().skip(1).flatten().copied().collect()
 }
 
-fn aes_cbc_decrypt(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
+pub fn aes_cbc_decrypt(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> Option<Vec<u8>> {
     if ciphertext.len() % AES_128_BLOCK_SIZE == 0 && iv.len() == AES_128_BLOCK_SIZE {
         let mut decrypter = AesDecrypter::new(key);
         let ciphertext_blocks: Vec<&[u8]> = vec![iv]
