@@ -6,10 +6,7 @@ const AES_128_BLOCK_SIZE: usize = 16;
 
 pub fn aes_encryption_oracle(buffer: &[u8]) -> Vec<u8> {
     let gen_bytes = |n| {
-        let byte_range = Uniform::new(0, u8::MAX);
-        let mut rng = rand::thread_rng();
-
-        (0..n).map(move |_| rng.sample(&byte_range))
+        (0..n).map(|_| rand::random::<u8>())
     };
 
     let mut rng = rand::thread_rng();
@@ -26,12 +23,7 @@ pub fn aes_encryption_oracle(buffer: &[u8]) -> Vec<u8> {
 
     let key: Vec<u8> = gen_bytes(AES_128_BLOCK_SIZE).collect();
     if rng.sample(Uniform::new(0, 2)) == 0 {
-        let iv: Vec<u8> = {
-            let mut rng = rand::thread_rng();
-            let range = Uniform::new(0, u8::MAX);
-
-            (0..AES_128_BLOCK_SIZE).map(|_| rng.sample(&range)).collect()
-        };
+        let iv: Vec<u8> = gen_bytes(AES_128_BLOCK_SIZE).collect();
 
         c10::aes_cbc_encrypt(&plaintext, &key, &iv)
     } else {

@@ -34,12 +34,12 @@ impl AesEncrypter {
     }
 }
 
-struct AesDecrypter {
+pub struct AesDecrypter {
     decrypter: Crypter,
 }
 
 impl AesDecrypter {
-    fn new(key: &[u8]) -> Self {
+    pub fn new(key: &[u8]) -> Self {
         let cipher = Cipher::aes_128_ecb();
 
         let mut decrypter = Crypter::new(cipher, Mode::Decrypt, key, None).unwrap();
@@ -109,7 +109,7 @@ pub fn aes_cbc_decrypt(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> Option<Vec<u
             acc
         });
 
-        Some(c9::pkcs7_unpad(&plaintext, AES_128_BLOCK_SIZE as u8).unwrap())
+        c9::pkcs7_unpad(&plaintext, AES_128_BLOCK_SIZE as u8)
     } else {
         None
     }
@@ -120,7 +120,6 @@ fn verify() {
     let raw = fs::read_to_string("./src/set2/10.txt").unwrap();
     let base64 = Base64::try_from(raw.replace("\n", "").as_str()).unwrap();
     let ciphertext = base64.to_bytes();
-    println!("{:?}", ciphertext);
     let iv = vec![0u8; AES_128_BLOCK_SIZE];
     let plaintext = aes_cbc_decrypt(&ciphertext, b"YELLOW SUBMARINE", &iv).unwrap();
     let expected_plaintext = b"I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \

@@ -1,4 +1,3 @@
-use rand::{distributions::Uniform, Rng};
 use super::{c10, c15};
 
 struct Oracle {
@@ -13,9 +12,7 @@ impl Oracle {
     const SUFFIX: &'static [u8] = b";comment2=%20like%20a%20pound%20of%20bacon";
 
     fn new() -> Self {
-        let mut rng = rand::thread_rng();
-        let dist = Uniform::new(0, u8::MAX);
-        let key = (0..Self::BLOCK_SIZE).map(|_| rng.sample(&dist)).collect();
+        let key = (0..Self::BLOCK_SIZE).map(|_| rand::random::<u8>()).collect();
         
         Oracle { key }
     }

@@ -1,11 +1,6 @@
 pub fn pkcs7_pad(buffer: &[u8], block_size: u8) -> Vec<u8> {
     let pad_start: u8 = (buffer.len() % block_size as usize) as u8;
-    let pad: u8 = if pad_start == 0 {
-        block_size
-    } else {
-        block_size - pad_start
-    };
-
+    let pad: u8 = block_size - pad_start;
     let mut padded = buffer.to_vec();
 
     for _ in 0..pad { padded.push(pad) }
@@ -18,7 +13,7 @@ pub fn pkcs7_unpad(buffer: &[u8], block_size: u8) -> Option<Vec<u8>> {
         let blocks = buffer.chunks(block_size as usize);
         let length = blocks.len();
 
-        if blocks.clone().last().unwrap() == vec![block_size, block_size] {
+        if blocks.clone().last().unwrap() == vec![block_size; block_size as usize] {
             Some(blocks.take(length - 1).flatten().cloned().collect())
         } else {
             let unpadded_last_block = {

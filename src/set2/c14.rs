@@ -1,5 +1,4 @@
 use crate::set1::{c1::Base64, c7};
-use rand::{distributions::Uniform, Rng};
 use std::convert::TryFrom;
 
 struct Oracle {
@@ -12,17 +11,14 @@ impl Oracle {
     const BLOCK_SIZE: usize = 16;
 
     fn new() -> Self {
-        let mut rng = rand::thread_rng();
-        let range = Uniform::new(0, u8::MAX);
-
         let random_prefix: Vec<u8> = {
-            let random_count = rng.sample(&range);
+            let random_count = rand::random::<u8>();
 
-            (0..random_count).map(|_| rng.sample(&range)).collect()
+            (0..random_count).map(|_| rand::random::<u8>()).collect()
         };
 
         let mut random_key = [0u8; 16];
-        for i in 0..Self::BLOCK_SIZE { random_key[i] = rng.sample(&range) }
+        for i in 0..Self::BLOCK_SIZE { random_key[i] = rand::random::<u8>() }
 
         let unknown_plaintext = {
             let s = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdw\
