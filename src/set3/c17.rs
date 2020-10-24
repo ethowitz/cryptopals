@@ -1,16 +1,17 @@
-use crate::set1::{c1::Base64, c2, c7};
+use crate::block_ciphers::{Aes, Mode};
+use crate::helpers::{self, Base64};
 use crate::set2::{c9, c10};
 use rand::{distributions::Uniform, Rng};
 use std::collections::HashSet;
 use std::convert::TryFrom;
 
 struct Oracle {
-    iv: Vec<u8>,
-    key: Vec<u8>,
+    aes: Aes,
+    iv: [u8; Aes::BLOCK_SIZE],
+    plaintexts: Vec<Vec<u8>>,
 }
 
 impl Oracle {
-    const BLOCK_SIZE: usize = 16;
     const PLAINTEXTS: [&'static str; 10] = [
         "MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=",
         "MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=",
@@ -25,26 +26,34 @@ impl Oracle {
     ];
 
     fn new() -> Self {
-        let key = (0..Self::BLOCK_SIZE).map(|_| rand::random::<u8>()).collect();
-        let iv = (0..Self::BLOCK_SIZE).map(|_| rand::random::<u8>()).collect();
+        let mut key = [0u8; Aes::BLOCK_SIZE];
+        for i in 0..Aes::BLOCK_SIZE { key[i] = rand::random::<u8>() }
 
-        Oracle { iv, key }
+        let mut iv = [0u8; Aes::BLOCK_SIZE];
+        for i in 0..Aes::BLOCK_SIZE { iv[i] = rand::random::<u8>() }
+
+
+        let aes = Aes::new(key, Mode::Cbc);
+
+        let plaintexts = Self::PLAINTEXTS.iter()
+            .map(|plaintext| Base64::try_from(*plaintext).unwrap().to_bytes())
+            .collect();
+
+        Oracle { aes, iv, plaintexts }
     }
 
-    fn encrypt(&self) -> Vec<u8> {
+    fn encrypt(&mut self) -> Vec<u8> {
         let plaintext = {
             let mut rng = rand::thread_rng();
             let dist = Uniform::new(0, Self::PLAINTEXTS.len());
-            let base64 = Self::PLAINTEXTS[rng.sample(&dist)];
-
-            Base64::try_from(base64).unwrap().to_bytes()
+            &self.plaintexts[rng.sample(&dist)]
         };
 
-        c10::aes_cbc_encrypt(&plaintext, &self.key, &self.iv)
+        [&self.iv[..], &self.aes.encrypt(plaintext, Some(self.iv)).unwrap()].concat()
     }
 
-    fn decrypt(&self, ciphertext: &[u8], iv: &[u8]) -> bool {
-        c10::aes_cbc_decrypt(ciphertext, &self.key, iv).is_some()
+    fn decrypt(&mut self, ciphertext: &[u8], iv: [u8; Aes::BLOCK_SIZE]) -> bool {
+        self.aes.decrypt(ciphertext, Some(iv)).is_ok()
     }
 }
 
@@ -64,12 +73,20 @@ impl Oracle {
 //    with \x03
 // 8. generalize
 fn attack() -> Vec<Vec<u8>> {
-    let oracle = Oracle::new();
-    let mut ciphertexts = HashSet::new();
+    let mut oracle = Oracle::new();
+    let ciphertexts = {
+        let mut set = HashSet::new();
 
-    fn randomize(block: &mut [u8; Oracle::BLOCK_SIZE], suffix_length: usize) -> Option<()> {
-        if suffix_length < Oracle::BLOCK_SIZE {
-            let prefix_length = Oracle::BLOCK_SIZE - suffix_length;
+        while set.len() < 10 {
+            set.insert(oracle.encrypt());
+        }
+
+        set.iter().cloned().collect::<Vec<Vec<u8>>>()
+    };
+
+    fn randomize(block: &mut [u8; Aes::BLOCK_SIZE], suffix_length: usize) -> Option<()> {
+        if suffix_length < Aes::BLOCK_SIZE {
+            let prefix_length = Aes::BLOCK_SIZE - suffix_length;
 
             for n in 0..prefix_length { block[n] = rand::random::<u8>() }
 
@@ -79,11 +96,11 @@ fn attack() -> Vec<Vec<u8>> {
         }
     }
 
-    let solve_block = |prev_block: &[u8], block: &[u8]| -> Vec<u8> {
-        let mut chosen_ciphertext = [0u8; Oracle::BLOCK_SIZE];
+    let mut solve_block = |prev_block: &[u8], block: &[u8]| -> Vec<u8> {
+        let mut chosen_ciphertext = [0u8; Aes::BLOCK_SIZE];
         let mut plaintext_block = Vec::new();
 
-        for n in 0..Oracle::BLOCK_SIZE {
+        for n in 0..Aes::BLOCK_SIZE {
             // fix the last n bytes of the chosen ciphertext block to be the expected pad byte
             // (n + 1) XORed with the corresponding byte in the plaintext (known at this point)
             // XORed with the corresponding byte in the previous ciphertext block. this yields
@@ -92,23 +109,23 @@ fn attack() -> Vec<Vec<u8>> {
             // bytes, so we can brute force the byte required in the previous ciphertext block to
             // yield the leftmost pad byte.
             for (i, byte) in plaintext_block.iter().rev().enumerate() {
-                let index = (Oracle::BLOCK_SIZE - n) + i;
+                let index = (Aes::BLOCK_SIZE - n) + i;
                 chosen_ciphertext[index] = byte ^ prev_block[index] ^ (n + 1) as u8
             }
 
             loop {
-                // choose a random ciphertext block, fixing the last n bytes
+                // choose a random ciphertext block, keeping the last n bytes fixed
                 randomize(&mut chosen_ciphertext, n).unwrap();
 
                 // ask the oracle if the current ciphertext block yields plaintext with valid
                 // padding given our chosen ciphertext as the IV
-                if oracle.decrypt(&block, &chosen_ciphertext) { 
+                if oracle.decrypt(&block, chosen_ciphertext) { 
                     // the oracle told us that the padding is valid, so we know that the byte in 
                     // the block_size - n spot is our expcted pad byte (n + 1). with this info, we
                     // can recover the orignal byte in the plaintext by XORing the block_size - n
                     // byte in the chosen ciphertext (the IV in this case), the pad byte (n + 1),
                     // and the block_size - n byte in the previous ciphertext block.
-                    let index = Oracle::BLOCK_SIZE - n - 1;
+                    let index = Aes::BLOCK_SIZE - n - 1;
                     let original_byte = chosen_ciphertext[index] ^ ((n + 1) as u8) ^ prev_block[index];
                     plaintext_block.push(original_byte);
 
@@ -121,34 +138,17 @@ fn attack() -> Vec<Vec<u8>> {
         plaintext_block
     };
 
-    // find a ciphertext we haven't seen yet
-    let mut choose_ciphertext = || {
-        loop {
-            let candidate = oracle.encrypt();
-
-            if ciphertexts.insert(candidate.clone()) {
-                return [oracle.iv.as_slice(), candidate.as_slice()].concat();
-            }
-        }
-    };
-
-    let mut plaintexts = Vec::new();
-
-    for _ in 0..10 {
-        let ciphertext = choose_ciphertext();
-        let plaintext = ciphertext
-            .chunks(Oracle::BLOCK_SIZE)
+    ciphertexts.iter().map(|ciphertext| {
+        let padded_plaintext = ciphertext
+            .chunks(Aes::BLOCK_SIZE)
             .collect::<Vec<&[u8]>>()
             .windows(2)
             .map(|blocks| solve_block(blocks[0], blocks[1]))
             .flatten()
             .collect::<Vec<u8>>();
 
-        let unpadded_plaintext = c9::pkcs7_unpad(&plaintext, Oracle::BLOCK_SIZE as u8).unwrap();
-        plaintexts.push(unpadded_plaintext);
-    }
-
-    plaintexts
+        helpers::pkcs7_unpad(&padded_plaintext, Aes::BLOCK_SIZE).unwrap()
+    }).collect::<Vec<Vec<u8>>>()
 }
 
 #[test]

@@ -1,49 +1,70 @@
+use crate::block_ciphers::{Aes, Mode};
 use crate::set1::c7;
 use rand::{distributions::Uniform, Rng};
 use super::c10;
 
 const AES_128_BLOCK_SIZE: usize = 16;
 
-pub fn aes_encryption_oracle(buffer: &[u8]) -> Vec<u8> {
-    let gen_bytes = |n| {
-        (0..n).map(|_| rand::random::<u8>())
-    };
+struct Oracle {
+    cbc: Aes,
+    ecb: Aes,
+}
 
-    let mut rng = rand::thread_rng();
-    let plaintext: Vec<u8> = {
-        let pad_bytes_range = Uniform::new(5, 10);
-        let head_bytes = gen_bytes(rng.sample(&pad_bytes_range));
-        let tail_bytes = gen_bytes(rng.sample(&pad_bytes_range));
+impl Oracle {
+    fn new() -> Self {
+        let mut key = [0u8; Aes::BLOCK_SIZE];
+        for i in 0..Aes::BLOCK_SIZE { key[i] = rand::random::<u8>() }
 
-        head_bytes
-            .chain(buffer.iter().copied())
-            .chain(tail_bytes)
-            .collect()
-    };
+        let cbc = Aes::new(key, Mode::Cbc);
+        let ecb = Aes::new(key, Mode::Ecb);
 
-    let key: Vec<u8> = gen_bytes(AES_128_BLOCK_SIZE).collect();
-    if rng.sample(Uniform::new(0, 2)) == 0 {
-        let iv: Vec<u8> = gen_bytes(AES_128_BLOCK_SIZE).collect();
+        Self { cbc, ecb }
+    }
 
-        c10::aes_cbc_encrypt(&plaintext, &key, &iv)
-    } else {
-        c7::aes_ecb_encrypt(&plaintext, &key)
+    fn encrypt(&mut self, plaintext: &[u8]) -> Vec<u8> {
+        let mut rng = rand::thread_rng();
+        let plaintext: Vec<u8> = {
+            let pad_bytes_range = Uniform::new(5, 10);
+            let mut head_bytes = Self::random_bytes(rng.sample(&pad_bytes_range));
+            let mut tail_bytes = Self::random_bytes(rng.sample(&pad_bytes_range));
+
+            let mut p = Vec::new();
+            p.append(&mut head_bytes);
+            p.append(&mut plaintext.to_vec());
+            p.append(&mut tail_bytes);
+
+            p
+        };
+
+        if rng.sample(Uniform::new(0, 2)) == 0 {
+            let mut iv = [0u8; Aes::BLOCK_SIZE];
+            for i in 0..Aes::BLOCK_SIZE { iv[i] = rand::random::<u8>() }
+
+            self.cbc.encrypt(plaintext, Some(iv)).unwrap()
+        } else {
+            self.ecb.encrypt(plaintext, None).unwrap()
+        }
+    }
+
+    fn random_bytes(n: usize) -> Vec<u8> {
+        (0..n).map(|_| rand::random::<u8>()).collect::<Vec<u8>>()
     }
 }
+
 
 pub enum AesMode {
     Cbc,
     Ecb,
 }
 
-pub fn aes_detection_oracle<F>(mut encrypter: F, block_size: usize) -> AesMode
+pub fn aes_detection_oracle<F>(mut encrypter: F) -> AesMode
     where F: FnMut(&[u8]) -> Vec<u8>
 {
     // choose any plaintext such that the first two blocks are equal
     let chosen_plaintext = [0u8; u8::MAX as usize];
     let ciphertext = encrypter(&chosen_plaintext);
     let ciphertext_blocks: Vec<&[u8]> = ciphertext
-        .chunks(block_size)
+        .chunks(Aes::BLOCK_SIZE)
         .collect();
 
     // if the first two ciphertext blocks are the same, ECB is being used
@@ -58,9 +79,10 @@ pub fn aes_detection_oracle<F>(mut encrypter: F, block_size: usize) -> AesMode
 fn verify() {
     let epsilon = 0.01;
     let num_trials = 50000;
+    let mut oracle = Oracle::new();
 
     let sum = (0..num_trials).fold(0, |acc, _| {
-        acc + match aes_detection_oracle(|plaintext| aes_encryption_oracle(plaintext), AES_128_BLOCK_SIZE) {
+        acc + match aes_detection_oracle(|plaintext| oracle.encrypt(plaintext)) {
             AesMode::Cbc => 0,
             AesMode::Ecb => 1
         }

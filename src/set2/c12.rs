@@ -1,21 +1,32 @@
-use crate::set1::{c1::Base64, c6, c7};
+use crate::block_ciphers::{Aes, Mode};
+use crate::helpers::Base64;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use super::c11::{self, AesMode};
 
-fn oracle(plaintext: &[u8]) -> Vec<u8> {
-    const KEY: [u8; 16] = [239, 191, 189, 239, 191, 189, 69, 75, 239, 191, 189, 239, 191, 189, 239,
-        191];
-    let unknown_plaintext: Vec<u8> = {
-        let s = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaG\
-            UgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c\
-            3QgZHJvdmUgYnkK";
-    
-        Base64::try_from(s).unwrap().to_bytes()
-    };
+struct Oracle {
+    aes: Aes,
+    suffix: Vec<u8>,
+}
 
-    let full_plaintext = [plaintext, &unknown_plaintext].concat();
-    c7::aes_ecb_encrypt(&full_plaintext, &KEY)
+impl Oracle {
+    const UNKNOWN_PLAINTEXT: &'static str = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc2\
+        8gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQge\
+        W91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK";
+
+    fn new() -> Self {
+        let mut key = [0u8; Aes::BLOCK_SIZE];
+        for i in 0..Aes::BLOCK_SIZE { key[i] = rand::random::<u8>() }
+
+        let aes = Aes::new(key, Mode::Ecb);
+        let suffix = Base64::try_from(Self::UNKNOWN_PLAINTEXT).unwrap().to_bytes();
+
+        Self { aes, suffix }
+    }
+
+    fn encrypt(&mut self, plaintext: &[u8]) -> Vec<u8> {
+        self.aes.encrypt([plaintext, &self.suffix].concat(), None).unwrap()
+    }
 }
 
 pub fn find_block_size<F>(mut encrypter: F) -> usize
@@ -48,17 +59,18 @@ pub fn find_block_size<F>(mut encrypter: F) -> usize
 // for to be the last byte of a block and comparing the resulting ciphertext block to the 2^8
 // possible ciphertext blocks.
 fn decrypt_ciphertext() -> Vec<u8> {
-    let block_size = find_block_size(|p| oracle(p));
+    let mut oracle = Oracle::new();
+    let block_size = find_block_size(|p| oracle.encrypt(p));
     let mut plaintext = Vec::new();
 
-    for n in 0..oracle(&[]).len() {
+    for n in 0..oracle.encrypt(&[]).len() {
 
         let solved_nth_byte = {
             // pass pad bytes to the oracle such that the byte we are solving for is the final byte
             // in a block; given that we know the previous block_size-1 bytes of plaintext, we are
             // able to brute force this plaintext byte.
             let pad = vec![0; block_size - (n % block_size) - 1];
-            let ciphertext = oracle(&pad);
+            let ciphertext = oracle.encrypt(&pad);
 
             // isolate the block of ciphertext we are interested in
             let block_number = n / block_size;
@@ -81,7 +93,7 @@ fn decrypt_ciphertext() -> Vec<u8> {
                 let mut block = almost_block.clone();
                 block.push(*byte);
 
-                ciphertext_block == &oracle(&block).to_vec()[..block_size]
+                ciphertext_block == &oracle.encrypt(&block).to_vec()[..block_size]
             });
 
             match maybe_solved_byte {
@@ -104,10 +116,11 @@ fn decrypt_ciphertext() -> Vec<u8> {
 
 #[test]
 fn verify() {
-    let block_size = find_block_size(|p| oracle(p));
+    let mut oracle = Oracle::new();
+    let block_size = find_block_size(|p| oracle.encrypt(p));
     assert_eq!(block_size, 16);
 
-    if let AesMode::Cbc = c11::aes_detection_oracle(|p| oracle(p), block_size) {
+    if let AesMode::Cbc = c11::aes_detection_oracle(|p| oracle.encrypt(p)) {
         panic!();
     }
 

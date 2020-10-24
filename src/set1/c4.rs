@@ -1,11 +1,10 @@
+use crate::helpers::{self, Hex};
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use super::c3;
-use super::c1::Hex;
-use super::c2;
 
 fn find_plaintext<P: AsRef<Path>>(filename: P) -> Vec<u8> {
     fn read_lines<P: AsRef<Path>>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>> {
@@ -18,7 +17,7 @@ fn find_plaintext<P: AsRef<Path>>(filename: P) -> Vec<u8> {
 
     let plaintexts_iter = ciphertexts.iter().flat_map(|ciphertext: &Vec<u8>| -> Vec<Vec<u8>> {
         (0..u8::MAX).map(|n| {
-            c2::xor(&ciphertext, &vec![n; ciphertext.len()]).unwrap()
+            helpers::xor(&ciphertext, &vec![n; ciphertext.len()]).unwrap()
         }).collect()
     });
 

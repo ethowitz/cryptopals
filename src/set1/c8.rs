@@ -1,8 +1,8 @@
+use crate::helpers::Hex;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{self, BufRead};
-use super::c1::Hex;
 use super::c6;
 
 fn detect_aes_ecb(buffers: &[&[u8]]) -> Option<Vec<u8>> {

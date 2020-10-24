@@ -1,15 +1,14 @@
+use crate::helpers::{self, Base64};
 use std::fs;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
-use super::c1::Base64;
-use super::c2;
 use super::c3;
 use super::c5;
 
 pub fn get_hamming_distance(buffer1: &[u8], buffer2: &[u8]) -> Result<usize, &'static str> {
     let count_bits = |byte| (0..8).fold(0, |acc, n| acc + (((1 << n) & byte) >> n) as usize);
 
-    c2::xor(buffer1, buffer2).map(|buffer| {
+    helpers::xor(buffer1, buffer2).map(|buffer| {
         buffer.iter().fold(0, |acc, byte| acc + count_bits(*byte))
     })
 }

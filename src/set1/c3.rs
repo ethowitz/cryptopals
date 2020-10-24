@@ -1,8 +1,7 @@
+use crate::helpers::{self, Hex};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use super::c2;
-use super::c1::Hex;
 
 // Public
 pub fn get_char_distribution(buffer: &[u8]) -> HashMap<char, f64> {
@@ -74,9 +73,9 @@ pub fn find_key(ciphertext: &[u8]) -> Vec<u8> {
     (0..u8::MAX)
         .map(|n| vec![n; length])
         .min_by(|key1, key2| {
-            let plaintext1 = c2::xor(ciphertext, key1).unwrap();
+            let plaintext1 = helpers::xor(ciphertext, key1).unwrap();
             let score1 = get_score(&plaintext1);
-            let plaintext2 = c2::xor(ciphertext, key2).unwrap();
+            let plaintext2 = helpers::xor(ciphertext, key2).unwrap();
             let score2 = get_score(&plaintext2);
 
             score1.partial_cmp(&score2).unwrap_or(Ordering::Equal)
@@ -87,7 +86,7 @@ pub fn find_key(ciphertext: &[u8]) -> Vec<u8> {
 pub fn find_plaintext(ciphertext: &[u8]) -> Vec<u8> {
     let key = find_key(ciphertext);
 
-    c2::xor(&key, ciphertext).unwrap()
+    helpers::xor(&key, ciphertext).unwrap()
 }
 
 #[test]

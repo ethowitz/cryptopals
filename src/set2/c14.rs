@@ -1,51 +1,50 @@
-use crate::set1::{c1::Base64, c7};
+use crate::helpers::Base64;
+use crate::block_ciphers::{Aes, Mode};
 use std::convert::TryFrom;
 
 struct Oracle {
-    random_key: [u8; 16],
-    random_prefix: Vec<u8>,
-    unknown_plaintext: Vec<u8>,
+    aes: Aes,
+    prefix: Vec<u8>,
+    suffix: Vec<u8>,
 }
 
 impl Oracle {
-    const BLOCK_SIZE: usize = 16;
+    const UNKNOWN_PLAINTEXT: &'static str = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc2\
+        8gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQge\
+        W91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK";
 
     fn new() -> Self {
-        let random_prefix: Vec<u8> = {
+        let prefix: Vec<u8> = {
             let random_count = rand::random::<u8>();
 
             (0..random_count).map(|_| rand::random::<u8>()).collect()
         };
 
-        let mut random_key = [0u8; 16];
-        for i in 0..Self::BLOCK_SIZE { random_key[i] = rand::random::<u8>() }
+        let mut key = [0u8; 16];
+        for i in 0..Aes::BLOCK_SIZE { key[i] = rand::random::<u8>() }
 
-        let unknown_plaintext = {
-            let s = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdw\
-                pUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vL\
-                CBJIGp1c3QgZHJvdmUgYnkK";
-        
-            Base64::try_from(s).unwrap().to_bytes()
-        };
+        let suffix = Base64::try_from(Self::UNKNOWN_PLAINTEXT).unwrap().to_bytes();
 
-        Oracle { random_key, random_prefix, unknown_plaintext }
+        let aes = Aes::new(key, Mode::Ecb);
+
+        Oracle { aes, prefix, suffix }
     }
 
-    fn encrypt(&self, plaintext: &[u8]) -> Vec<u8> {
-        let full_plaintext = [&self.random_prefix, plaintext, &self.unknown_plaintext].concat();
+    fn encrypt(&mut self, plaintext: &[u8]) -> Vec<u8> {
+        let full_plaintext = [&self.prefix, plaintext, &self.suffix].concat();
 
-        c7::aes_ecb_encrypt(&full_plaintext, &self.random_key)
+        self.aes.encrypt(&full_plaintext, None).unwrap()
     }
 }
 
 fn decrypt_ciphertext() -> Vec<u8> {
-    let oracle = Oracle::new();
+    let mut oracle = Oracle::new();
 
     let number_of_full_prefix_blocks = {
         let without_chosen_plaintext = oracle.encrypt(&[]);
         let with_chosen_plaintext = oracle.encrypt(&[0]);
-        let zipper = without_chosen_plaintext.chunks(Oracle::BLOCK_SIZE)
-            .zip(with_chosen_plaintext.chunks(Oracle::BLOCK_SIZE));
+        let zipper = without_chosen_plaintext.chunks(Aes::BLOCK_SIZE)
+            .zip(with_chosen_plaintext.chunks(Aes::BLOCK_SIZE));
 
         zipper
             .take_while(|(c1, c2)| c1 == c2)
@@ -53,12 +52,12 @@ fn decrypt_ciphertext() -> Vec<u8> {
     };
 
     let distance_from_block_boundary = {
-        let ciphertexts = (0..Oracle::BLOCK_SIZE+1)
+        let ciphertexts = (0..Aes::BLOCK_SIZE+1)
             .map(|n| oracle.encrypt(&vec![0u8; n]))
             .collect::<Vec<Vec<u8>>>();
         
-        let start = number_of_full_prefix_blocks * Oracle::BLOCK_SIZE;
-        let end = start + Oracle::BLOCK_SIZE;
+        let start = number_of_full_prefix_blocks * Aes::BLOCK_SIZE;
+        let end = start + Aes::BLOCK_SIZE;
         ciphertexts.windows(2).take_while(|cs| cs[0][start..end] != cs[1][start..end]).count()
     };
 
@@ -67,10 +66,10 @@ fn decrypt_ciphertext() -> Vec<u8> {
     for n in 0..oracle.encrypt(&[]).len() {
         let solved_nth_byte = {
             // pass pad bytes to the oracle such that the byte we are solving for is the final byte
-            // in a block; given that we know the previous Oracle::BLOCK_SIZE-1 bytes of plaintext,
+            // in a block; given that we know the previous Aes::BLOCK_SIZE-1 bytes of plaintext,
             // we are able to brute force this plaintext byte
             let pad = {
-                let pad_length = Oracle::BLOCK_SIZE - (n % Oracle::BLOCK_SIZE) - 1 +
+                let pad_length = Aes::BLOCK_SIZE - (n % Aes::BLOCK_SIZE) - 1 +
                     distance_from_block_boundary;
 
                 vec![0; pad_length]
@@ -79,8 +78,8 @@ fn decrypt_ciphertext() -> Vec<u8> {
             let ciphertext = oracle.encrypt(&pad);
 
             // isolate the block of ciphertext we are interested in
-            let block_number = n / Oracle::BLOCK_SIZE + number_of_full_prefix_blocks + 1 +
-                (distance_from_block_boundary as f64 / Oracle::BLOCK_SIZE as f64).ceil() as usize;
+            let block_number = n / Aes::BLOCK_SIZE + number_of_full_prefix_blocks + 1 +
+                (distance_from_block_boundary as f64 / Aes::BLOCK_SIZE as f64).ceil() as usize;
 
             // choose our plaintext to be the pad we use to align the unknown byte to a block
             // boundary concatenated to the plaintext we know so far
@@ -90,9 +89,9 @@ fn decrypt_ciphertext() -> Vec<u8> {
             let maybe_solved_byte = (0..u8::MAX).find(|byte| {
                 let mut p = chosen_plaintext.clone();
                 p.push(*byte);
-                let candidate = &oracle.encrypt(&p).to_vec()[..block_number*Oracle::BLOCK_SIZE];
+                let candidate = &oracle.encrypt(&p).to_vec()[..block_number*Aes::BLOCK_SIZE];
 
-                &ciphertext[..block_number*Oracle::BLOCK_SIZE] == candidate
+                &ciphertext[..block_number*Aes::BLOCK_SIZE] == candidate
             });
 
             match maybe_solved_byte {
@@ -116,8 +115,8 @@ fn decrypt_ciphertext() -> Vec<u8> {
 #[test]
 fn verify() {
     for _ in 0..100 {
-    let expected = "Rollin\' in my 5.0\nWith my rag-top down so my hair can blow\nThe girlies on \
-                    standby waving just to say hi\nDid you stop? No, I just drove by\n";
-    assert_eq!(expected, String::from_utf8(decrypt_ciphertext()).unwrap());
+        let expected = "Rollin\' in my 5.0\nWith my rag-top down so my hair can blow\nThe girlies \
+                        on standby waving just to say hi\nDid you stop? No, I just drove by\n";
+        assert_eq!(expected, String::from_utf8(decrypt_ciphertext()).unwrap());
     }
 }
