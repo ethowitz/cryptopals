@@ -1,4 +1,4 @@
-use crate::block_ciphers::{Aes, Mode};
+use crate::block_ciphers::{Aes, Input, Mode};
 use std::collections::HashMap;
 
 fn parse_kv(kv_string: &str) -> HashMap<String, String> {
@@ -30,11 +30,11 @@ impl Oracle {
     }
 
     fn decrypt(&mut self, ciphertext: &[u8]) -> String {
-        String::from_utf8(self.aes.decrypt(ciphertext, None).unwrap()).unwrap()
+        String::from_utf8(self.aes.decrypt(ciphertext, Input::Nothing).unwrap()).unwrap()
     }
 
     fn encrypt(&mut self, email: &str) -> Vec<u8> {
-        self.aes.encrypt(&Self::profile_for(email), None).unwrap()
+        self.aes.encrypt(&Self::profile_for(email), Input::Nothing).unwrap()
     }
 
     fn profile_for(email: &str) -> String {

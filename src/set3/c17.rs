@@ -1,4 +1,4 @@
-use crate::block_ciphers::{Aes, Mode};
+use crate::block_ciphers::{Aes, Input, Mode};
 use crate::helpers::{self, Base64};
 use crate::set2::{c9, c10};
 use rand::{distributions::Uniform, Rng};
@@ -49,11 +49,11 @@ impl Oracle {
             &self.plaintexts[rng.sample(&dist)]
         };
 
-        [&self.iv[..], &self.aes.encrypt(plaintext, Some(self.iv)).unwrap()].concat()
+        [&self.iv[..], &self.aes.encrypt(plaintext, Input::Iv(self.iv)).unwrap()].concat()
     }
 
     fn decrypt(&mut self, ciphertext: &[u8], iv: [u8; Aes::BLOCK_SIZE]) -> bool {
-        self.aes.decrypt(ciphertext, Some(iv)).is_ok()
+        self.aes.decrypt(ciphertext, Input::Iv(iv)).is_ok()
     }
 }
 

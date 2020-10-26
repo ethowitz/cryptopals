@@ -4,14 +4,22 @@ use openssl::symm::{self, decrypt, encrypt, Cipher};
 // Public
 pub enum Mode {
     Cbc,
-    //Ctr([u8; Aes::BLOCK_SIZE]),
+    Ctr,
     Ecb,
 }
 
+// This is not the best API design. The crypters don't all have the same interfaces, which means
+// the Aes#encrypt() and Aes#decrypt() methods are a bit overloaded
 pub enum Aes {
     Cbc(CbcCrypter),
-    //Ctr(CtrCrypter),
+    Ctr(CtrCrypter),
     Ecb(EcbCrypter),
+}
+
+pub enum Input {
+    Iv([u8; Aes::BLOCK_SIZE]),
+    Nonce(u64),
+    Nothing,
 }
 
 impl Aes {
@@ -21,37 +29,51 @@ impl Aes {
     {
         match mode {
             Mode::Cbc => Self::Cbc(CbcCrypter::new(key)),
-            //Mode::Ctr(iv) => CtrCrypter::new(iv, key),
+            Mode::Ctr => Self::Ctr(CtrCrypter::new(key)),
             Mode::Ecb => Self::Ecb(EcbCrypter::new(key)),
         }
     }
 
-    pub fn encrypt<T>(&mut self, plaintext: T, maybe_iv: Option<[u8; Self::BLOCK_SIZE]>)
-        -> Result<Vec<u8>, &'static str>
+    pub fn encrypt<T>(&mut self, plaintext: T, input: Input) -> Result<Vec<u8>, &'static str>
         where T: AsRef<[u8]>
     {
         match self {
             Self::Cbc(crypter) => {
-                maybe_iv
-                    .ok_or("must specify an IV for CBC encryption!")
-                    .map(|iv| crypter.encrypt(plaintext, iv))
+                if let Input::Iv(iv) = input {
+                    Ok(crypter.encrypt(plaintext, iv))
+                } else {
+                    Err("must specify an IV for CBC encryption")
+                }
             },
-            //Ctr(crypter) => crypter.encrypt(plaintext),
+            Self::Ctr(crypter) => {
+                if let Input::Nonce(nonce) = input {
+                    Ok(crypter.encrypt(plaintext, nonce))
+                } else {
+                    Err("must specify a nonce for CTR decryption")
+                }
+            }
             Self::Ecb(crypter) => Ok(crypter.encrypt(plaintext)),
         }
     }
 
-    pub fn decrypt<T>(&mut self, ciphertext: T, maybe_iv: Option<[u8; Self::BLOCK_SIZE]>)
-        -> Result<Vec<u8>, &'static str>
+    pub fn decrypt<T>(&mut self, ciphertext: T, input: Input) -> Result<Vec<u8>, &'static str>
         where T: AsRef<[u8]>
     {
         match self {
             Self::Cbc(crypter) => {
-                maybe_iv
-                    .ok_or("must specify an IV for CBC decryption!")
-                    .and_then(|iv| crypter.decrypt(ciphertext, iv))
+                if let Input::Iv(iv) = input {
+                    crypter.decrypt(ciphertext, iv)
+                } else {
+                    Err("must specify an IV for CBC decryption")
+                }
             }
-            //Ctr(crypter) => crypter.encrypt(plaintext),
+            Self::Ctr(crypter) => {
+                if let Input::Nonce(nonce) = input {
+                    Ok(crypter.decrypt(ciphertext, nonce))
+                } else {
+                    Err("must specify a nonce for CTR decryption")
+                }
+            },
             Self::Ecb(crypter) => Ok(crypter.decrypt(ciphertext)),
         }
     }
@@ -59,7 +81,6 @@ impl Aes {
 
 // Private
 pub struct CbcCrypter {
-    key: [u8; Aes::BLOCK_SIZE],
     openssl_encrypter: symm::Crypter,
     openssl_decrypter: symm::Crypter,
 }
@@ -75,7 +96,7 @@ impl CbcCrypter {
             .unwrap();
         openssl_decrypter.pad(false);
 
-        Self { key, openssl_encrypter, openssl_decrypter }
+        Self { openssl_encrypter, openssl_decrypter }
     }
 
     fn encrypt<T>(&mut self, plaintext: T, iv: [u8; Aes::BLOCK_SIZE]) -> Vec<u8>
@@ -147,18 +168,51 @@ impl CbcCrypter {
     }
 }
 
-//struct CtrCrypter {
-    //iv: [u8; Aes::BLOCK_SIZE],
-    //key: [u8; Aes::BLOCK_SIZE],
-    //openssl_crypter: symm::Crypter,
-//}
+pub struct CtrCrypter {
+    key: [u8; Aes::BLOCK_SIZE],
+    openssl_cipher: Cipher,
+}
 
-//impl CtrCrypter {
-    //fn new(iv: [u8; Aes::BLOCK_SIZE], key: [u8; Aes::BLOCK_SIZE]) -> Self {
+impl CtrCrypter {
+    fn new(key: [u8; Aes::BLOCK_SIZE]) -> Self {
+        let openssl_cipher = Cipher::aes_128_ecb();
 
-        ////Ok(Self { block_size, ecb_crypter, iv, key })
-    //}
-//}
+        Self { key, openssl_cipher }
+    }
+
+    pub fn encrypt<T>(&self, plaintext: T, nonce: u64) -> Vec<u8>
+        where T: AsRef<[u8]>
+    {
+        self.transform(plaintext, nonce)
+    }
+
+    pub fn decrypt<T>(&self, ciphertext: T, nonce: u64) -> Vec<u8>
+        where T: AsRef<[u8]>
+    {
+        self.transform(ciphertext, nonce)
+    }
+
+    fn transform<T>(&self, buffer: T, nonce: u64) -> Vec<u8>
+        where T: AsRef<[u8]>
+    {
+        let bitstream  = {
+            let bitstream_length: u64 = (buffer.as_ref().len() / Aes::BLOCK_SIZE + 1) as u64;
+            let mut b = (0..bitstream_length).map(|counter| {
+                let counter_plaintext = [nonce.to_le_bytes(), counter.to_le_bytes()].concat();
+                let mut ciphertext =
+                    encrypt(self.openssl_cipher, &self.key, None, &counter_plaintext).unwrap();
+
+                ciphertext.truncate(Aes::BLOCK_SIZE);
+                ciphertext
+            }).flatten().collect::<Vec<u8>>();
+
+            b.truncate(buffer.as_ref().len());
+            b
+        };
+
+        helpers::xor(&bitstream, buffer.as_ref()).unwrap()
+    }
+}
 
 pub struct EcbCrypter {
     key: [u8; Aes::BLOCK_SIZE],

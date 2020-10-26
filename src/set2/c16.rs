@@ -1,4 +1,4 @@
-use crate::block_ciphers::{Aes, Mode};
+use crate::block_ciphers::{Aes, Input, Mode};
 use super::{c10, c15};
 
 struct Oracle {
@@ -25,11 +25,11 @@ impl Oracle {
         let escaped_plaintext = plaintext.replace(';', "\\;").replace('=', "\\=");
         let full_plaintext = [Self::PREFIX, escaped_plaintext.as_bytes(), Self::SUFFIX].concat();
 
-        self.aes.encrypt(full_plaintext, Some(Self::IV)).unwrap()
+        self.aes.encrypt(full_plaintext, Input::Iv(Self::IV)).unwrap()
     }
 
     fn is_admin(&mut self, ciphertext: &[u8]) -> bool {
-        let plaintext = self.aes.decrypt(ciphertext, Some(Self::IV)).unwrap();
+        let plaintext = self.aes.decrypt(ciphertext, Input::Iv(Self::IV)).unwrap();
         let data = String::from_utf8_lossy(&plaintext);
 
         data.contains(Self::ADMIN_ROLE_IDENTIFIER)

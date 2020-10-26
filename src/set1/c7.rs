@@ -1,4 +1,4 @@
-use crate::block_ciphers::{Aes, Mode};
+use crate::block_ciphers::{Aes, Input, Mode};
 use crate::helpers::Base64;
 use std::convert::TryFrom;
 use std::fs;
@@ -10,7 +10,7 @@ fn verify() {
     let ciphertext = base64.to_bytes();
 
     let mut ecb_crypter = Aes::new(b"YELLOW SUBMARINE".clone(), Mode::Ecb);
-    let plaintext = ecb_crypter.decrypt(ciphertext, None).unwrap();
+    let plaintext = ecb_crypter.decrypt(ciphertext, Input::Nothing).unwrap();
 
     let expected_plaintext = b"I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \
                               the fly girls yell \nIn ecstasy in the back of me \nWell that\'s my \

@@ -1,4 +1,4 @@
-use crate::block_ciphers::{Aes, Mode};
+use crate::block_ciphers::{Aes, Input, Mode};
 use crate::set1::c7;
 use rand::{distributions::Uniform, Rng};
 use super::c10;
@@ -40,9 +40,9 @@ impl Oracle {
             let mut iv = [0u8; Aes::BLOCK_SIZE];
             for i in 0..Aes::BLOCK_SIZE { iv[i] = rand::random::<u8>() }
 
-            self.cbc.encrypt(plaintext, Some(iv)).unwrap()
+            self.cbc.encrypt(plaintext, Input::Iv(iv)).unwrap()
         } else {
-            self.ecb.encrypt(plaintext, None).unwrap()
+            self.ecb.encrypt(plaintext, Input::Nothing).unwrap()
         }
     }
 

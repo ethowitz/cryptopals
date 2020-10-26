@@ -1,5 +1,5 @@
 use crate::helpers::Base64;
-use crate::block_ciphers::{Aes, Mode};
+use crate::block_ciphers::{Aes, Input, Mode};
 use std::convert::TryFrom;
 
 struct Oracle {
@@ -33,7 +33,7 @@ impl Oracle {
     fn encrypt(&mut self, plaintext: &[u8]) -> Vec<u8> {
         let full_plaintext = [&self.prefix, plaintext, &self.suffix].concat();
 
-        self.aes.encrypt(&full_plaintext, None).unwrap()
+        self.aes.encrypt(&full_plaintext, Input::Nothing).unwrap()
     }
 }
 

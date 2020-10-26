@@ -1,4 +1,4 @@
-use crate::block_ciphers::{Aes, Mode};
+use crate::block_ciphers::{Aes, Input, Mode};
 use crate::helpers::Base64;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -25,7 +25,7 @@ impl Oracle {
     }
 
     fn encrypt(&mut self, plaintext: &[u8]) -> Vec<u8> {
-        self.aes.encrypt([plaintext, &self.suffix].concat(), None).unwrap()
+        self.aes.encrypt([plaintext, &self.suffix].concat(), Input::Nothing).unwrap()
     }
 }
 
