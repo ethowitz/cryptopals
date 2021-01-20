@@ -1,5 +1,5 @@
-use crate::block_ciphers::{Aes, Input, Mode};
 use super::{c10, c15};
+use crate::block_ciphers::{Aes, Input, Mode};
 
 struct Oracle {
     aes: Aes,
@@ -14,10 +14,12 @@ impl Oracle {
 
     fn new() -> Self {
         let mut key = [0u8; Aes::BLOCK_SIZE];
-        for i in 0..Aes::BLOCK_SIZE { key[i] = rand::random::<u8>() }
+        for i in 0..Aes::BLOCK_SIZE {
+            key[i] = rand::random::<u8>()
+        }
 
         let aes = Aes::new(key, Mode::Cbc);
-        
+
         Oracle { aes }
     }
 
@@ -25,7 +27,9 @@ impl Oracle {
         let escaped_plaintext = plaintext.replace(';', "\\;").replace('=', "\\=");
         let full_plaintext = [Self::PREFIX, escaped_plaintext.as_bytes(), Self::SUFFIX].concat();
 
-        self.aes.encrypt(full_plaintext, Input::Iv(Self::IV)).unwrap()
+        self.aes
+            .encrypt(full_plaintext, Input::Iv(Self::IV))
+            .unwrap()
     }
 
     fn is_admin(&mut self, ciphertext: &[u8]) -> bool {
@@ -41,7 +45,8 @@ fn generate_admin_ciphertext(oracle: &mut Oracle) -> Vec<u8> {
     let number_of_full_prefix_blocks = {
         let without_chosen_plaintext = oracle.encrypt("");
         let with_chosen_plaintext = oracle.encrypt("0");
-        let zipper = without_chosen_plaintext.chunks(Aes::BLOCK_SIZE)
+        let zipper = without_chosen_plaintext
+            .chunks(Aes::BLOCK_SIZE)
             .zip(with_chosen_plaintext.chunks(Aes::BLOCK_SIZE));
 
         zipper.take_while(|(c1, c2)| c1 == c2).count()
@@ -50,13 +55,16 @@ fn generate_admin_ciphertext(oracle: &mut Oracle) -> Vec<u8> {
     // compute the "remainder" (the number of bytes remaining in the last (partial) block of the
     // prefix)
     let distance_from_block_boundary = {
-        let ciphertexts = (0..Aes::BLOCK_SIZE+1)
+        let ciphertexts = (0..Aes::BLOCK_SIZE + 1)
             .map(|n| oracle.encrypt(&String::from_utf8(vec![0u8; n]).unwrap()))
             .collect::<Vec<Vec<u8>>>();
-        
+
         let start = number_of_full_prefix_blocks * Aes::BLOCK_SIZE;
         let end = start + Aes::BLOCK_SIZE;
-        ciphertexts.windows(2).take_while(|cs| cs[0][start..end] != cs[1][start..end]).count()
+        ciphertexts
+            .windows(2)
+            .take_while(|cs| cs[0][start..end] != cs[1][start..end])
+            .count()
     };
 
     // choose a plaintext consisting of all zeroes to simplify the edits we need to perform on the
@@ -65,8 +73,9 @@ fn generate_admin_ciphertext(oracle: &mut Oracle) -> Vec<u8> {
     let mut ciphertext = oracle.encrypt(&String::from_utf8(chosen_plaintext).unwrap());
 
     let role = Oracle::ADMIN_ROLE_IDENTIFIER.as_bytes();
-    let offset = number_of_full_prefix_blocks * Aes::BLOCK_SIZE + distance_from_block_boundary +
-        (Aes::BLOCK_SIZE - role.len());
+    let offset = number_of_full_prefix_blocks * Aes::BLOCK_SIZE
+        + distance_from_block_boundary
+        + (Aes::BLOCK_SIZE - role.len());
 
     // assume we are trying to make edits to the ciphertext such that plaintext block j (p_j)
     // contains the string ";admin=true;". c_j-1 is the ciphertext block that comes before the
@@ -77,11 +86,13 @@ fn generate_admin_ciphertext(oracle: &mut Oracle) -> Vec<u8> {
     // c'_j-1 XOR E^-1(c_j) = X
     // c'_j-1 = X XOR E^-1(c_j) (since A XOR A = 0 and A XOR 0 = A for arbitrary A)
     // c'_j-1 = X XOR c_j-1 XOR p_j (by definition of decryption in the CBC block cipher mode)
-    // c'_j-1 = X XOR c_j-1 (since we chose p_j to be 0, and A XOR 0 = A for arbitrary A) 
+    // c'_j-1 = X XOR c_j-1 (since we chose p_j to be 0, and A XOR 0 = A for arbitrary A)
     //
     // so, we need to choose c'_j-1 to be our desired plaintext XORed with the ciphertext block
     // c_j-1
-    for i in 0..role.len() { ciphertext[offset+i] ^= role[i] }
+    for i in 0..role.len() {
+        ciphertext[offset + i] ^= role[i]
+    }
 
     ciphertext
 }

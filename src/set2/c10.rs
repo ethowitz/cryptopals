@@ -1,5 +1,5 @@
-use crate::helpers::Base64;
 use crate::block_ciphers::{self, Aes, Input, Mode};
+use crate::helpers::Base64;
 use std::{convert::TryFrom, fs};
 
 #[test]
@@ -12,7 +12,8 @@ fn verify() {
     let mut aes = Aes::new(b"YELLOW SUBMARINE".clone(), Mode::Cbc);
     let plaintext = aes.decrypt(ciphertext, Input::Iv(iv));
 
-    let expected_plaintext = b"I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \
+    let expected_plaintext =
+        b"I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \
                               the fly girls yell \nIn ecstasy in the back of me \nWell that\'s my \
                               DJ Deshay cuttin\' all them Z\'s \nHittin\' hard and the girlies \
                               goin\' crazy \nVanilla\'s on the mike, man I\'m not lazy. \n\nI\'m \

@@ -36,7 +36,9 @@ impl TryFrom<&str> for Hex {
 
 impl fmt::Display for Hex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in &self.0 { write!(f, "{:02x}", byte)? }
+        for byte in &self.0 {
+            write!(f, "{:02x}", byte)?
+        }
 
         Ok(())
     }
@@ -60,7 +62,7 @@ impl Base64 {
                 let zero_ascii_code = '0' as u8;
                 zero_ascii_code..(zero_ascii_code + 10)
             };
-            
+
             if uppercase_letter_range.contains(byte) {
                 byte - ('A' as u8)
             } else if lowercase_letter_range.contains(byte) {
@@ -72,7 +74,7 @@ impl Base64 {
             } else if *byte == ('/' as u8) {
                 63
             } else {
-                println!("{}",byte);
+                println!("{}", byte);
                 panic!("we should never get to this scenario given the bit operations above")
             }
         };
@@ -85,10 +87,10 @@ impl Base64 {
             if number_of_pads == 0 {
                 let original_values: Vec<u8> = chunk.iter().map(get_original_value).collect();
 
-                let combined: u32 = (original_values[0] as u32) << 18 |
-                    (original_values[1] as u32) << 12 |
-                    (original_values[2] as u32) << 6 |
-                    original_values[3] as u32;
+                let combined: u32 = (original_values[0] as u32) << 18
+                    | (original_values[1] as u32) << 12
+                    | (original_values[2] as u32) << 6
+                    | original_values[3] as u32;
 
                 v.push(((combined & 0xFF0000) >> 16) as u8);
                 v.push(((combined & 0xFF00) >> 8) as u8);
@@ -100,7 +102,6 @@ impl Base64 {
 
                 v.push(original_value1 << 2 | original_value2 >> 4);
                 v.push(original_value2 << 4 | original_value3 >> 2);
-
             } else if number_of_pads == 2 {
                 let original_value1 = get_original_value(&chunk[0]);
                 let original_value2 = get_original_value(&chunk[1]);
@@ -131,24 +132,32 @@ impl From<&[u8]> for Base64 {
         };
 
         let get_inner_groups = |slice: &[u8]| {
-            let outer_group: u32 = (slice[0] as u32) << 16
-                | (slice[1] as u32) << 8
-                | slice[2] as u32;
+            let outer_group: u32 =
+                (slice[0] as u32) << 16 | (slice[1] as u32) << 8 | slice[2] as u32;
             let mask = 0b00111111;
             let index1 = (outer_group & (mask << 18)) >> 18;
             let index2 = (outer_group & (mask << 12)) >> 12;
             let index3 = (outer_group & (mask << 6)) >> 6;
             let index4 = outer_group & mask;
 
-            vec![get_ascii_value(index1), get_ascii_value(index2), get_ascii_value(index3),
-                get_ascii_value(index4)]
+            vec![
+                get_ascii_value(index1),
+                get_ascii_value(index2),
+                get_ascii_value(index3),
+                get_ascii_value(index4),
+            ]
         };
 
         let length = bytes.len();
         let mut last_quantum = {
-            let remaining_bytes: Vec<u8> = bytes.iter().rev().take(length % 3).rev().map(|n| *n)
+            let remaining_bytes: Vec<u8> = bytes
+                .iter()
+                .rev()
+                .take(length % 3)
+                .rev()
+                .map(|n| *n)
                 .collect();
-        
+
             let mut v = Vec::new();
 
             if remaining_bytes.len() == 1 {
@@ -160,13 +169,11 @@ impl From<&[u8]> for Base64 {
                 v.push('=' as u8);
                 v.push('=' as u8);
             } else if remaining_bytes.len() == 2 {
-                let outer_group = (remaining_bytes[0] as u32) << 8 |
-                    (remaining_bytes[1] as u32);
+                let outer_group = (remaining_bytes[0] as u32) << 8 | (remaining_bytes[1] as u32);
                 let mask = 0b00111111;
                 let inner_group_1 = (outer_group & (mask << 10)) >> 10;
                 let inner_group_2 = (outer_group & (mask << 4)) >> 4;
                 let inner_group_3 = (outer_group & mask) << 2;
-
 
                 v.push(get_ascii_value(inner_group_1));
                 v.push(get_ascii_value(inner_group_2));
@@ -211,8 +218,10 @@ impl TryFrom<&str> for Base64 {
             let special_characters = ['+', '/', '='];
             let n = c as u8;
 
-            uppercase_letter_range.contains(&n) || lowercase_letter_range.contains(&n) ||
-                number_range.contains(&n) || special_characters.contains(&c)
+            uppercase_letter_range.contains(&n)
+                || lowercase_letter_range.contains(&n)
+                || number_range.contains(&n)
+                || special_characters.contains(&c)
         }
 
         for c in string.chars() {
@@ -229,7 +238,9 @@ impl TryFrom<&str> for Base64 {
 
 impl fmt::Display for Base64 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in &self.0 { write!(f, "{}", *byte as char)? }
+        for byte in &self.0 {
+            write!(f, "{}", *byte as char)?
+        }
 
         Ok(())
     }
@@ -254,7 +265,9 @@ pub fn pkcs7_pad(buffer: &[u8], block_size: usize) -> Vec<u8> {
     let pad = block_size - pad_start;
     let mut padded = buffer.to_vec();
 
-    for _ in 0..pad { padded.push(pad as u8) }
+    for _ in 0..pad {
+        padded.push(pad as u8)
+    }
 
     padded
 }
@@ -270,20 +283,22 @@ pub fn pkcs7_unpad(buffer: &[u8], block_size: usize) -> Option<Vec<u8>> {
             let unpadded_last_block = {
                 let mut last_block = blocks.clone().last().unwrap().to_vec();
                 let pad_byte = last_block[last_block.len() - 1];
-                let number_of_pad_bytes = last_block.iter().rev()
-                    .take_while(|byte| **byte == pad_byte).count();
+                let number_of_pad_bytes = last_block
+                    .iter()
+                    .rev()
+                    .take_while(|byte| **byte == pad_byte)
+                    .count();
 
-                if &last_block[block_size-number_of_pad_bytes..] !=
-                      vec![number_of_pad_bytes as u8; number_of_pad_bytes] {
+                if &last_block[block_size - number_of_pad_bytes..]
+                    != vec![number_of_pad_bytes as u8; number_of_pad_bytes]
+                {
                     return None;
                 }
 
                 last_block.truncate(block_size - number_of_pad_bytes);
                 last_block
             };
-            let mut output: Vec<Vec<u8>> = blocks
-                .take(length - 1)
-                .map(|x| x.to_vec()).collect();
+            let mut output: Vec<Vec<u8>> = blocks.take(length - 1).map(|x| x.to_vec()).collect();
 
             output.push(unpadded_last_block);
             Some(output.iter().flatten().cloned().collect())
@@ -292,4 +307,3 @@ pub fn pkcs7_unpad(buffer: &[u8], block_size: usize) -> Option<Vec<u8>> {
         None
     }
 }
-

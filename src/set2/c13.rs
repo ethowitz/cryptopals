@@ -22,10 +22,12 @@ struct Oracle {
 impl Oracle {
     fn new() -> Self {
         let mut key = [0u8; Aes::BLOCK_SIZE];
-        for i in 0..Aes::BLOCK_SIZE { key[i] = rand::random::<u8>() }
+        for i in 0..Aes::BLOCK_SIZE {
+            key[i] = rand::random::<u8>()
+        }
 
         let aes = Aes::new(key, Mode::Ecb);
-        
+
         Self { aes }
     }
 
@@ -34,7 +36,9 @@ impl Oracle {
     }
 
     fn encrypt(&mut self, email: &str) -> Vec<u8> {
-        self.aes.encrypt(&Self::profile_for(email), Input::Nothing).unwrap()
+        self.aes
+            .encrypt(&Self::profile_for(email), Input::Nothing)
+            .unwrap()
     }
 
     fn profile_for(email: &str) -> String {
@@ -55,20 +59,21 @@ fn create_admin_role() -> String {
     let mut oracle = Oracle::new();
     let block_size = 16;
     let admin_ciphertext_block = {
-        let num_pad_bytes =  block_size - "admin".len();
+        let num_pad_bytes = block_size - "admin".len();
         let num_lead_bytes = block_size - "email=".len();
         let admin_plaintext_block = [
-                // add leading bytes so "admin" begins at a block boundary
-                vec![0u8; num_lead_bytes].as_slice(),
-                "admin".as_bytes(),
-                // add padding bytes to mimic the pkcs#7 padding done by AES
-                vec![num_pad_bytes as u8; num_pad_bytes].as_slice()
-            ].concat();
+            // add leading bytes so "admin" begins at a block boundary
+            vec![0u8; num_lead_bytes].as_slice(),
+            "admin".as_bytes(),
+            // add padding bytes to mimic the pkcs#7 padding done by AES
+            vec![num_pad_bytes as u8; num_pad_bytes].as_slice(),
+        ]
+        .concat();
         let c = oracle.encrypt(&String::from_utf8(admin_plaintext_block).unwrap());
 
         // isolate the ciphertext block that corresponds to the "admin" plaintext block created
         // above
-        c[block_size..block_size*2].to_vec()
+        c[block_size..block_size * 2].to_vec()
     };
 
     // choose an email address that pushes the role name ("user") to begin a new block (the last

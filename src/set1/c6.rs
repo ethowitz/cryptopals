@@ -1,41 +1,52 @@
-use crate::helpers::{self, Base64};
-use std::fs;
-use std::cmp::Ordering;
-use std::convert::TryFrom;
 use super::c3;
 use super::c5;
+use crate::helpers::{self, Base64};
+use std::cmp::Ordering;
+use std::convert::TryFrom;
+use std::fs;
 
 pub fn get_hamming_distance(buffer1: &[u8], buffer2: &[u8]) -> Result<usize, &'static str> {
     let count_bits = |byte| (0..8).fold(0, |acc, n| acc + (((1 << n) & byte) >> n) as usize);
 
-    helpers::xor(buffer1, buffer2).map(|buffer| {
-        buffer.iter().fold(0, |acc, byte| acc + count_bits(*byte))
-    })
+    helpers::xor(buffer1, buffer2)
+        .map(|buffer| buffer.iter().fold(0, |acc, byte| acc + count_bits(*byte)))
 }
 
-fn find_key(buffer: &[u8]) -> Vec<u8> {
+fn find_keysize(buffer: &[u8]) -> usize {
     const MAX_KEYSIZE: usize = 40;
 
-    let keysize = (1..MAX_KEYSIZE).min_by(|keysize1, keysize2| {
-        let get_average_hamming_distance = |keysize: usize| {
-            let number_of_blocks = buffer.len() / keysize;
-            let hamming_distances = (0..(number_of_blocks-1)).map(|n| {
-                get_hamming_distance(&buffer[n*keysize..(n+1)*keysize],
-                    &buffer[(n+1)*keysize..(n+2)*keysize]).unwrap()
-            });
-            
-            hamming_distances.sum::<usize>() as f64 / number_of_blocks as f64 / keysize as f64
-        };
-        let average_hamming_distance1 = get_average_hamming_distance(*keysize1);
-        let average_hamming_distance2 = get_average_hamming_distance(*keysize2);
+    (1..MAX_KEYSIZE)
+        .min_by(|keysize1, keysize2| {
+            let get_average_hamming_distance = |keysize: usize| {
+                let number_of_blocks = buffer.len() / keysize;
+                let hamming_distances = (0..(number_of_blocks - 1)).map(|n| {
+                    get_hamming_distance(
+                        &buffer[n * keysize..(n + 1) * keysize],
+                        &buffer[(n + 1) * keysize..(n + 2) * keysize],
+                    )
+                    .unwrap()
+                });
 
-        average_hamming_distance1.partial_cmp(&average_hamming_distance2)
-            .unwrap_or(Ordering::Equal)
-    }).unwrap();
+                hamming_distances.sum::<usize>() as f64 / number_of_blocks as f64 / keysize as f64
+            };
+            let average_hamming_distance1 = get_average_hamming_distance(*keysize1);
+            let average_hamming_distance2 = get_average_hamming_distance(*keysize2);
 
+            average_hamming_distance1
+                .partial_cmp(&average_hamming_distance2)
+                .unwrap_or(Ordering::Equal)
+        })
+        .unwrap()
+}
+
+pub fn find_key(buffer: &[u8], keysize: usize) -> Vec<u8> {
     let blocks = buffer.chunks(keysize);
     let transposed_blocks = (0..blocks.len()).map(|n: usize| -> Vec<u8> {
-        blocks.clone().filter_map(|block| block.get(n)).copied().collect()
+        blocks
+            .clone()
+            .filter_map(|block| block.get(n))
+            .copied()
+            .collect()
     });
 
     transposed_blocks
@@ -49,10 +60,11 @@ fn find_key(buffer: &[u8]) -> Vec<u8> {
 //    XOR'd with the same byte
 // 2. once we have the single-character key for each transposed block, we can un-transpose one
 //    "cycle" of keys to get the original key
-// *  This approach makes cryptanalysis easier because we create blocks of bytes whose letter 
+// *  This approach makes cryptanalysis easier because we create blocks of bytes whose letter
 //    frequencies don't change with the application of the key
 fn find_plaintext(buffer: &[u8]) -> Vec<u8> {
-    let key = find_key(buffer);
+    let keysize = find_keysize(buffer);
+    let key = find_key(buffer, keysize);
     c5::repeating_key_xor(&key, buffer)
 }
 
@@ -61,7 +73,10 @@ fn test_get_hamming_distance() {
     let buffer1 = "this is a test".as_bytes();
     let buffer2 = "wokka wokka!!!".as_bytes();
     let expected_hamming_distance = 37;
-    assert_eq!(expected_hamming_distance, get_hamming_distance(buffer1, buffer2).unwrap());
+    assert_eq!(
+        expected_hamming_distance,
+        get_hamming_distance(buffer1, buffer2).unwrap()
+    );
 }
 
 #[test]

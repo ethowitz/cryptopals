@@ -13,7 +13,9 @@ pub fn get_char_distribution(buffer: &[u8]) -> HashMap<char, f64> {
     }
 
     let length = buffer.len() as f64;
-    for count in distribution.values_mut() { *count *= 100f64 / length };
+    for count in distribution.values_mut() {
+        *count *= 100f64 / length
+    }
 
     distribution
 }
@@ -91,10 +93,15 @@ pub fn find_plaintext(ciphertext: &[u8]) -> Vec<u8> {
 
 #[test]
 fn verify() {
-    let ciphertext = Hex::try_from("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393\
-        b3736").unwrap();
+    let ciphertext = Hex::try_from(
+        "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393\
+        b3736",
+    )
+    .unwrap();
 
     let plaintext = find_plaintext(ciphertext.to_bytes().as_slice());
-    assert_eq!(String::from_utf8(plaintext).unwrap().as_str()
-        , "Cooking MC\'s like a pound of bacon");
+    assert_eq!(
+        String::from_utf8(plaintext).unwrap().as_str(),
+        "Cooking MC\'s like a pound of bacon"
+    );
 }

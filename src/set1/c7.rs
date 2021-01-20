@@ -12,7 +12,8 @@ fn verify() {
     let mut ecb_crypter = Aes::new(b"YELLOW SUBMARINE".clone(), Mode::Ecb);
     let plaintext = ecb_crypter.decrypt(ciphertext, Input::Nothing).unwrap();
 
-    let expected_plaintext = b"I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \
+    let expected_plaintext =
+        b"I\'m back and I\'m ringin\' the bell \nA rockin\' on the mike while \
                               the fly girls yell \nIn ecstasy in the back of me \nWell that\'s my \
                               DJ Deshay cuttin\' all them Z\'s \nHittin\' hard and the girlies \
                               goin\' crazy \nVanilla\'s on the mike, man I\'m not lazy. \n\nI\'m \

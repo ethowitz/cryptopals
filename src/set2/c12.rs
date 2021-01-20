@@ -1,8 +1,8 @@
+use super::c11::{self, AesMode};
 use crate::block_ciphers::{Aes, Input, Mode};
 use crate::helpers::Base64;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use super::c11::{self, AesMode};
 
 struct Oracle {
     aes: Aes,
@@ -10,29 +10,37 @@ struct Oracle {
 }
 
 impl Oracle {
-    const UNKNOWN_PLAINTEXT: &'static str = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc2\
+    const UNKNOWN_PLAINTEXT: &'static str =
+        "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc2\
         8gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQge\
         W91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK";
 
     fn new() -> Self {
         let mut key = [0u8; Aes::BLOCK_SIZE];
-        for i in 0..Aes::BLOCK_SIZE { key[i] = rand::random::<u8>() }
+        for i in 0..Aes::BLOCK_SIZE {
+            key[i] = rand::random::<u8>()
+        }
 
         let aes = Aes::new(key, Mode::Ecb);
-        let suffix = Base64::try_from(Self::UNKNOWN_PLAINTEXT).unwrap().to_bytes();
+        let suffix = Base64::try_from(Self::UNKNOWN_PLAINTEXT)
+            .unwrap()
+            .to_bytes();
 
         Self { aes, suffix }
     }
 
     fn encrypt(&mut self, plaintext: &[u8]) -> Vec<u8> {
-        self.aes.encrypt([plaintext, &self.suffix].concat(), Input::Nothing).unwrap()
+        self.aes
+            .encrypt([plaintext, &self.suffix].concat(), Input::Nothing)
+            .unwrap()
     }
 }
 
 pub fn find_block_size<F>(mut encrypter: F) -> usize
-    where F: FnMut(&[u8]) -> Vec<u8>
+where
+    F: FnMut(&[u8]) -> Vec<u8>,
 {
-    let plaintext = vec![0u8; u8::MAX as usize]; 
+    let plaintext = vec![0u8; u8::MAX as usize];
 
     // compute ciphertexts using plaintexts \x0, \x0\x0, \x0\x0\x0, etc. the index of the first
     // ciphertext in the list whose first block matches that of the subsequent ciphertext in the
@@ -45,8 +53,9 @@ pub fn find_block_size<F>(mut encrypter: F) -> usize
         .collect::<Vec<Vec<u8>>>()
         .windows(2)
         .enumerate()
-        .take_while(|(i, ctxs)| ctxs[0][..*i+1] != ctxs[1][..*i+1])
-        .count() + 1
+        .take_while(|(i, ctxs)| ctxs[0][..*i + 1] != ctxs[1][..*i + 1])
+        .count()
+        + 1
 }
 
 // INTUITION
@@ -64,7 +73,6 @@ fn decrypt_ciphertext() -> Vec<u8> {
     let mut plaintext = Vec::new();
 
     for n in 0..oracle.encrypt(&[]).len() {
-
         let solved_nth_byte = {
             // pass pad bytes to the oracle such that the byte we are solving for is the final byte
             // in a block; given that we know the previous block_size-1 bytes of plaintext, we are
@@ -74,16 +82,20 @@ fn decrypt_ciphertext() -> Vec<u8> {
 
             // isolate the block of ciphertext we are interested in
             let block_number = n / block_size;
-            let block_indexes = block_number*block_size..(block_number*block_size+block_size);
+            let block_indexes = block_number * block_size..(block_number * block_size + block_size);
             let ciphertext_block = &ciphertext[block_indexes];
 
             // choose the previous `block_size-1` plaintext bytes to use during our brute force
             // attack. if we don't have `block_size-1` plaintext bytes, pad the rest with zeroes
             let almost_block = {
                 if n < block_size - 1 {
-                    [vec![0u8; block_size - n - 1].as_slice(), plaintext.as_slice()].concat()
+                    [
+                        vec![0u8; block_size - n - 1].as_slice(),
+                        plaintext.as_slice(),
+                    ]
+                    .concat()
                 } else {
-                    plaintext[n-(block_size-1)..].to_vec()
+                    plaintext[n - (block_size - 1)..].to_vec()
                 }
             };
 
